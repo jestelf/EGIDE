@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Platform — Sunburst Map</title>
+<style>
+  :root { color-scheme: dark; }
+  html,body { height:100%; }
+  body { margin:0; font-family: system-ui, Segoe UI, Roboto, Arial, sans-serif; background:#0b0d10; color:#e7edf5; display:grid; grid-template-rows:auto 1fr auto; }
+
+  /* top bar */
+  #topbar { display:flex; align-items:center; gap:12px; padding:10px 14px; border-bottom:1px solid #1c2430; background:#0f141b; }
+  .btn { border:1px solid #273446; background:#182333; color:#dfe7f1; padding:6px 10px; border-radius:6px; cursor:pointer; }
+  .btn:hover { background:#203046; }
+  #crumbs { font-size:13px; opacity:.9 }
+  #crumbs a { color:#8ab4ff; text-decoration:none; }
+  #search { min-width:260px; padding:7px 10px; border-radius:6px; border:1px solid #273446; background:#111823; color:#dfe7f1; }
+  #filters { display:flex; align-items:center; gap:10px; margin-left:auto; font-size:13px; }
+
+  /* main */
+  #main { display:grid; grid-template-columns: 1fr 360px; height:100%; }
+  #canvasWrap { position:relative; }
+  #sun { width:100%; height:100%; display:block; background: radial-gradient(ellipse at center, #0e141c 0%, #0b0d10 60%); }
+  #tooltip { position:fixed; pointer-events:none; background:#101826; border:1px solid #2b415c; border-radius:6px; padding:8px 10px; font-size:12px; display:none; z-index:10; }
+  #panel { border-left:1px solid #1c2430; background:#0f141b; padding:12px; overflow:auto; }
+  #panel h3, #panel h4 { margin:8px 0; }
+  .kv { display:grid; grid-template-columns: 120px 1fr; gap:6px 10px; font-size:13px; }
+  code { background:#15202b; padding:2px 4px; border-radius:4px; }
+  ul.slim { margin:6px 0 0 18px; padding:0; }
+  ul.slim li { margin:2px 0; }
+
+  /* context menu */
+  #ctx { position:fixed; display:none; z-index:20; background:#101826; border:1px solid #2b415c; border-radius:6px; overflow:hidden; min-width:220px; }
+  #ctx button { display:block; width:100%; text-align:left; padding:8px 12px; background:none; border:none; color:#dfe7f1; cursor:pointer; font-size:13px; }
+  #ctx button:hover { background:#203046; }
+
+  footer { padding:8px 12px; border-top:1px solid #1c2430; background:#0f141b; font-size:12px; color:#98a6b8; }
+</style>
+</head>
+<body>
+  <div id="topbar">
+    <button class="btn" id="homeBtn">Platform</button>
+    <div id="crumbs"></div>
+    <input id="search" placeholder="Поиск: сервис / модель / маршрут"/>
+    <div id="filters">
+      <label><input type="checkbox" class="fl" value="frontend" checked/> Frontend</label>
+      <label><input type="checkbox" class="fl" value="backend" checked/> Backend</label>
+      <label><input type="checkbox" class="fl" value="qa" checked/> QA</label>
+    </div>
+  </div>
+
+  <div id="main">
+    <div id="canvasWrap">
+      <canvas id="sun"></canvas>
+      <div id="tooltip"></div>
+      <div id="ctx">
+        <button data-act="open-swagger">Открыть Swagger</button>
+        <button data-act="run-qa">Запустить QA</button>
+        <button data-act="validate">Валидировать сервис</button>
+        <button data-act="center">Сделать центром</button>
+      </div>
+    </div>
+    <aside id="panel">
+      <h3>Информация</h3>
+      <div id="info">Клик по сектору — дрилл-даун. Shift+клик — мультивыделение. ПКМ — контекст-меню.</div>
+    </aside>
+  </div>
+
+  <footer>Sunburst map · drill-down · фильтры · поиск · контекстные действия</footer>
+
+<script>
+/* =================== utils =================== */
+const $ = sel => document.querySelector(sel);
+const deg = x => x * 180/Math.PI;
+const rad = x => x * Math.PI/180;
+function clamp(a,b,c){return Math.max(b,Math.min(c,a))}
+function polar(cx, cy, r, th){ return [cx + r*Math.cos(th), cy + r*Math.sin(th)]; }
+function arcPath(ctx, cx, cy, r0, r1, th0, th1){
+  // draw annular sector
+  ctx.beginPath();
+  const [x0,y0] = polar(cx, cy, r0, th0);
+  ctx.arc(cx, cy, r1, th0, th1, false);
+  const [x1,y1] = polar(cx, cy, r0, th1);
+  ctx.lineTo(x1,y1);
+  ctx.arc(cx, cy, r0, th1, th0, true);
+  ctx.closePath();
+}
+function lerp(a,b,t){ return a + (b-a)*t; }
+
+const COLORS = {
+  platform: "#1f6feb",
+  backend:  "#4cc9f0",
+  frontend: "#80ed99",
+  qa:       "#c77dff",
+  other:    "#91a7ff"
+};
+
+// ---- NEW: animation & aggregation tuning ----
+const MIN_ARC_DEG = 6;     // минимальный видимый угол сектора; меньше — уходит в "+N"
+const ANIM_MS = 350;       // длительность анимации дрилл-дауна в мс
+let PREV_GEOM = new Map(); // id -> {th0, th1, r0, r1} из прошлого кадра (для анимации)
+
+/* =================== state =================== */
+let CANVAS, CTX, W, H, CX, CY, RING_W;
+let FULL_GRAPH = null;     // {nodes, edges}
+let TREE = null;           // root {id, name, type, weight, children[]}
+let CENTER_ID = "platform";
+let BREADCRUMBS = ["platform"];
+let FILTERS = new Set(["frontend","backend","qa"]);
+let HOV = null;            // hovered node
+let SELECTION = new Set(); // shift-select
+let LAYOUT = [];           // list of drawn sectors with geometry for hit-test
+let TOOLTIP = $("#tooltip");
+let CTXMENU = $("#ctx");
+let LAST_SEARCH = "";
+
+/* =================== fetching =================== */
+async function getJSON(url){
+  try{
+    const r = await fetch(url);
+    if(!r.ok) throw new Error(r.statusText);
+    return await r.json();
+  }catch(e){ return null; }
+}
+
+async function loadGraph(){
+  const g = await getJSON("/api/graph");
+  if(g && g.nodes && g.edges) return g;
+  // fallback demo
+  return {
+    nodes: [
+      {id:"platform",label:"Platform",type:"platform"},
+      {id:"auth",label:"Auth",type:"backend"},
+      {id:"billing",label:"Billing",type:"backend"},
+      {id:"ui",label:"WebApp",type:"frontend"},
+      {id:"qa-core",label:"QA Core",type:"qa"},
+      {id:"email",label:"Email",type:"backend"},
+      {id:"reports",label:"Reports",type:"frontend"}
+    ],
+    edges: [
+      {from:"auth",to:"platform",kind:"attached"},
+      {from:"billing",to:"platform",kind:"attached"},
+      {from:"ui",to:"platform",kind:"attached"},
+      {from:"qa-core",to:"platform",kind:"attached"},
+      {from:"email",to:"billing",kind:"depends_on"},
+      {from:"reports",to:"billing",kind:"depends_on"},
+      {from:"ui",to:"auth",kind:"depends_on"}
+    ]
+  };
+}
+
+async function loadService(id){
+  const s = await getJSON(`/api/service/${id}`);
+  if(s && !s.error) return s;
+  // fallback for demo
+  return {
+    name: id, title: id, description:"", depends_on:[], models:[], routes:[]
+  };
+}
+
+/* =================== tree building =================== */
+async function buildTree(rootId){
+  // 1) Пробуем готовое дерево от бэка: /api/tree?root=...
+  const serverTree = await getJSON(`/api/tree?root=${encodeURIComponent(rootId)}`);
+  if (serverTree && serverTree.id) {
+    // сервер может не прислать type/weight — подставим дефолты
+    function fill(n){
+      n.type = n.type || "backend";
+      n.weight = n.weight || 1;
+      (n.children||[]).forEach(fill);
+    }
+    fill(serverTree);
+    return serverTree;
+  }
+
+  // 2) Fallback: строим дерево из FULL_GRAPH, как раньше
+  const nodes = new Map(FULL_GRAPH.nodes.map(n=>[n.id,n]));
+  const adjOut = new Map(), adjIn = new Map();
+  FULL_GRAPH.edges.forEach(e=>{
+    if(!adjOut.has(e.from)) adjOut.set(e.from, new Set());
+    if(!adjIn.has(e.to)) adjIn.set(e.to, new Set());
+    adjOut.get(e.from).add(e.to);
+    adjIn.get(e.to).add(e.from);
+  });
+  const seen = new Set([rootId]);
+  const rootNode = nodes.get(rootId) || {id:rootId,label:rootId,type:"backend"};
+  const root = { id:rootNode.id, name:rootNode.label||rootId, type:rootNode.type||"backend", weight:1, children:[] };
+
+  function neighbors(id){
+    const outs = [...(adjOut.get(id)||[])];
+    const ins  = [...(adjIn.get(id)||[])];
+    return Array.from(new Set(outs.concat(ins)));
+  }
+
+  const q = [{treeNode: root, graphId: rootId, depth:0}];
+  const MAX_DEPTH = 3;
+  while(q.length){
+    const cur = q.shift();
+    if(cur.depth >= MAX_DEPTH) continue;
+    const nbs = neighbors(cur.graphId).filter(x=>!seen.has(x));
+    const filtered = nbs.filter(id=>{
+      const nd = nodes.get(id);
+      const t = (nd && nd.type) || "backend";
+      return FILTERS.has(t) || t==="platform";
+    });
+    filtered.forEach(id=>{
+      seen.add(id);
+      const nd = nodes.get(id) || {id, label:id, type:"backend"};
+      const child = { id: nd.id, name: nd.label||id, type: nd.type||"backend", weight: 1, children: [] };
+      cur.treeNode.children.push(child);
+      q.push({treeNode: child, graphId: id, depth: cur.depth+1});
+    });
+  }
+  function assignWeights(n){
+    if(!n.children || n.children.length===0){ n.weight = 1; return 1; }
+    let sum = 0;
+    n.children.forEach(c=> sum += assignWeights(c));
+    n.weight = Math.max(1, sum);
+    return n.weight;
+  }
+  assignWeights(root);
+  return root;
+}
+
+/* =================== layout =================== */
+function normalizeWeights(children){
+  const s = children.reduce((a,c)=>a+(c.weight||1),0) || 1;
+  children.forEach(c=> c._w = (c.weight||1)/s);
+}
+
+// ---- NEW: агрегируем слишком маленькие секторы в "+N" ----
+function aggregateSmall(children, totalAngleRad){
+  if (!children || children.length === 0) return children;
+  const minAngle = rad(MIN_ARC_DEG);
+  const result = [];
+  const small = [];
+  children.forEach(c=>{
+    const frac = (c._w || 0);
+    const span = totalAngleRad * frac;
+    if (span < minAngle) small.push(c);
+    else result.push(c);
+  });
+  if (small.length === 0) return result;
+  // собираем "+N"
+  const agg = {
+    id: "__agg__" + small.map(s=>s.id).join("_").slice(0,40),
+    name: `+${small.length}`,
+    type: "other",
+    weight: small.reduce((a,c)=> a + (c.weight||1), 0),
+    children: small
+  };
+  agg._w = small.reduce((a,c)=> a + (c._w || 0), 0);
+  result.push(agg);
+  // нормализуем _w заново
+  const sumW = result.reduce((a,c)=> a + (c._w || 0), 0) || 1;
+  result.forEach(c=> c._w = (c._w || 0) / sumW);
+  return result;
+}
+
+function layoutRadial(node, th0, th1, r0, ringW, out){
+  node._geom = { th0, th1, r0, r1: r0 + ringW };
+  out.push(node);
+
+  if(!node.children || node.children.length===0) return;
+  normalizeWeights(node.children);
+
+  // агрегируем мелкие сектора перед рекурсией
+  let kids = node.children.map(c=> ({...c}));
+  const totalAngle = (th1 - th0);
+  kids.forEach(c=> c._w = (c._w ?? (c.weight||1)));
+  kids = aggregateSmall(kids, totalAngle);
+
+  let cursor = th0;
+  kids.forEach(ch=>{
+    const span = totalAngle * ch._w;
+    layoutRadial(ch, cursor, cursor+span, r0+ringW, ringW, out);
+    cursor += span;
+  });
+}
+
+/* =================== rendering =================== */
+function resize(){
+  const c = $("#sun");
+  const rect = c.getBoundingClientRect();
+  c.width = Math.floor(rect.width * devicePixelRatio);
+  c.height = Math.floor(rect.height * devicePixelRatio);
+  CANVAS = c; CTX = c.getContext("2d");
+  W = c.width; H = c.height; CX = W/2; CY = H/2;
+  RING_W = Math.min(W,H) * 0.12; // ширина одного кольца
+}
+
+function colorFor(type, selected){
+  const base = COLORS[type] || COLORS.other;
+  if(selected) return shade(base, 1.25);
+  return base;
+}
+function shade(hex, k){
+  const c = hex.replace('#','');
+  const r = parseInt(c.slice(0,2),16), g = parseInt(c.slice(2,4),16), b = parseInt(c.slice(4,6),16);
+  const rr = clamp(Math.round(r*k),0,255), gg=clamp(Math.round(g*k),0,255), bb=clamp(Math.round(b*k),0,255);
+  return `#${rr.toString(16).padStart(2,'0')}${gg.toString(16).padStart(2,'0')}${bb.toString(16).padStart(2,'0')}`;
+}
+
+function draw(){
+  CTX.clearRect(0,0,W,H);
+  // background glow
+  const g = CTX.createRadialGradient(CX,CY,0, CX,CY, Math.min(W,H)/2);
+  g.addColorStop(0, "rgba(32,48,70,0.35)");
+  g.addColorStop(1, "rgba(0,0,0,0)");
+  CTX.fillStyle = g;
+  CTX.beginPath(); CTX.arc(CX,CY,Math.min(W,H)/2,0,Math.PI*2); CTX.fill();
+
+  // center disk (Platform or current center)
+  CTX.fillStyle = "#203b60";
+  CTX.strokeStyle = "#3d6aa1";
+  CTX.lineWidth = 2;
+  CTX.beginPath(); CTX.arc(CX,CY, RING_W*0.65, 0, Math.PI*2); CTX.fill(); CTX.stroke();
+
+  CTX.fillStyle = "#dfe7f1";
+  CTX.font = `${Math.max(14, Math.floor(RING_W*0.22))}px system-ui,Segoe UI,Roboto`;
+  CTX.textAlign = "center";
+  CTX.textBaseline = "middle";
+  CTX.fillText(CENTER_ID, CX, CY);
+
+  // draw sectors
+  LAYOUT = [];
+  const flat = [];
+  layoutRadial(TREE, -Math.PI/2, 1.5*Math.PI, RING_W*0.65, RING_W, flat);
+
+  flat.forEach(n=>{
+    if(n===TREE) return; // skip center geometry
+    const sel = SELECTION.has(n.id);
+    CTX.fillStyle = colorFor(n.type, sel);
+    CTX.strokeStyle = "#2a3a50";
+    CTX.lineWidth = 1;
+    arcPath(CTX, CX, CY, n._geom.r0, n._geom.r1, n._geom.th0, n._geom.th1);
+    CTX.fill(); CTX.stroke();
+
+    // label (if arc large enough)
+    const thMid = (n._geom.th0 + n._geom.th1)/2;
+    const rMid = (n._geom.r0 + n._geom.r1)/2;
+    const [lx,ly] = polar(CX,CY, rMid, thMid);
+    const visibleAngle = deg(n._geom.th1 - n._geom.th0);
+    if(visibleAngle > 8){
+      CTX.save();
+      CTX.translate(lx,ly);
+      CTX.rotate(thMid + Math.PI/2);
+      CTX.fillStyle = "#e7edf5";
+      CTX.font = "12px system-ui,Segoe UI,Roboto";
+      const text = n.name.length>18? n.name.slice(0,17)+"…" : n.name;
+      CTX.textAlign = "center"; CTX.textBaseline = "middle";
+      CTX.fillText(text, 0, 0);
+      CTX.restore();
+    }
+    // keep for hit-test
+    LAYOUT.push(n);
+  });
+}
+
+async function drawAnimated(){
+  // готовим новый плоский список (чтобы вычислить целевые геометрии)
+  const targetFlat = [];
+  layoutRadial(TREE, -Math.PI/2, 1.5*Math.PI, RING_W*0.65, RING_W, targetFlat);
+
+  // сопоставим целевые геометрии по id
+  const TARGET_MAP = new Map();
+  targetFlat.forEach(n=>{
+    if (n && n.id && n._geom) TARGET_MAP.set(n.id, n._geom);
+  });
+
+  const t0 = performance.now();
+  const dur = ANIM_MS;
+
+  return new Promise(res=>{
+    const tick = (now)=>{
+      const t = clamp((now - t0)/dur, 0, 1);
+      // для кадра: интерполируем геометрию каждого узла между PREV_GEOM и TARGET_MAP
+      LAYOUT = [];
+      CTX.clearRect(0,0,W,H);
+      // рисуем центр
+      const g = CTX.createRadialGradient(CX,CY,0, CX,CY, Math.min(W,H)/2);
+      g.addColorStop(0, "rgba(32,48,70,0.35)");
+      g.addColorStop(1, "rgba(0,0,0,0)");
+      CTX.fillStyle = g;
+      CTX.beginPath(); CTX.arc(CX,CY,Math.min(W,H)/2,0,Math.PI*2); CTX.fill();
+      CTX.fillStyle = "#203b60";
+      CTX.strokeStyle = "#3d6aa1";
+      CTX.lineWidth = 2;
+      CTX.beginPath(); CTX.arc(CX,CY, RING_W*0.65, 0, Math.PI*2); CTX.fill(); CTX.stroke();
+      CTX.fillStyle = "#dfe7f1";
+      CTX.font = `${Math.max(14, Math.floor(RING_W*0.22))}px system-ui,Segoe UI,Roboto`;
+      CTX.textAlign = "center"; CTX.textBaseline = "middle";
+      CTX.fillText(CENTER_ID, CX, CY);
+
+      // интерполяция и рендер секторов
+      targetFlat.forEach(n=>{
+        if (n === TREE) return;
+        const tgt = TARGET_MAP.get(n.id);
+        const prev = PREV_GEOM.get(n.id) || tgt;
+        const geom = {
+          th0: lerp(prev.th0, tgt.th0, t),
+          th1: lerp(prev.th1, tgt.th1, t),
+          r0:  lerp(prev.r0,  tgt.r0,  t),
+          r1:  lerp(prev.r1,  tgt.r1,  t),
+        };
+        // рисуем сектор
+        const sel = SELECTION.has(n.id);
+        CTX.fillStyle = colorFor(n.type, sel);
+        CTX.strokeStyle = "#2a3a50";
+        CTX.lineWidth = 1;
+        arcPath(CTX, CX, CY, geom.r0, geom.r1, geom.th0, geom.th1);
+        CTX.fill(); CTX.stroke();
+
+        // подпись если видно
+        const thMid = (geom.th0 + geom.th1)/2;
+        const rMid = (geom.r0 + geom.r1)/2;
+        const [lx,ly] = polar(CX,CY, rMid, thMid);
+        const visibleAngle = deg(geom.th1 - geom.th0);
+        if(visibleAngle > 8){
+          CTX.save();
+          CTX.translate(lx,ly);
+          CTX.rotate(thMid + Math.PI/2);
+          CTX.fillStyle = "#e7edf5";
+          CTX.font = "12px system-ui,Segoe UI,Roboto";
+          const text = n.name.length>18? n.name.slice(0,17)+"…" : n.name;
+          CTX.textAlign = "center"; CTX.textBaseline = "middle";
+          CTX.fillText(text, 0, 0);
+          CTX.restore();
+        }
+
+        // сохраняем для hit-test текущую геометрию кадра
+        const shadow = {...n, _geom: geom};
+        LAYOUT.push(shadow);
+      });
+
+      if (t < 1) requestAnimationFrame(tick);
+      else { draw(); res(); }
+    };
+    requestAnimationFrame(tick);
+  });
+}
+
+/* =================== hit-testing =================== */
+function hit(x,y){
+  // convert to polar
+  const dx = x*devicePixelRatio - CX, dy = y*devicePixelRatio - CY;
+  const r = Math.hypot(dx,dy);
+  let th = Math.atan2(dy,dx);
+  while(th < -Math.PI/2) th += 2*Math.PI; // align with layout start
+  while(th > 1.5*Math.PI) th -= 2*Math.PI;
+  for(const n of LAYOUT){
+    const g = n._geom;
+    if(r >= g.r0 && r <= g.r1 && th >= g.th0 && th <= g.th1) return n;
+  }
+  return null;
+}
+
+/* =================== interactions =================== */
+CANVAS = $("#sun");
+CANVAS.addEventListener("mousemove", e=>{
+  const n = hit(e.offsetX, e.offsetY);
+  if(n !== HOV){
+    HOV = n;
+    if(n){
+      TOOLTIP.style.display = "block";
+      TOOLTIP.innerHTML = `<b>${n.name}</b><div style="opacity:.8;font-size:12px">${n.type} • вес: ${n.weight}</div>`;
+    }else{
+      TOOLTIP.style.display = "none";
+    }
+  }
+  if(HOV){
+    TOOLTIP.style.left = (e.clientX+12)+"px";
+    TOOLTIP.style.top = (e.clientY+12)+"px";
+  }
+});
+CANVAS.addEventListener("mouseleave", ()=>{
+  HOV=null; TOOLTIP.style.display="none";
+});
+CANVAS.addEventListener("click", async e=>{
+  CTXMENU.style.display="none";
+  const n = hit(e.offsetX, e.offsetY);
+  if(!n || (n.id && n.id.startsWith("__agg__"))) return;
+  if(e.shiftKey){
+    // multi-select toggle
+    SELECTION.has(n.id) ? SELECTION.delete(n.id) : SELECTION.add(n.id);
+    draw(); return;
+  }
+  // drill-down: make clicked sector the new center
+  CENTER_ID = n.id;
+  BREADCRUMBS.push(CENTER_ID);
+  await rebuildTree();
+  await openInfo(CENTER_ID);
+});
+CANVAS.addEventListener("contextmenu", e=>{
+  e.preventDefault();
+  const n = hit(e.offsetX, e.offsetY);
+  if(!n || (n.id && n.id.startsWith("__agg__"))){ CTXMENU.style.display="none"; return; }
+  CTXMENU.style.display = "block";
+  CTXMENU.style.left = e.clientX+"px";
+  CTXMENU.style.top = e.clientY+"px";
+  CTXMENU.dataset.target = n.id;
+});
+document.addEventListener("click", e=>{
+  if(!CTXMENU.contains(e.target)) CTXMENU.style.display = "none";
+});
+CTXMENU.addEventListener("click", async e=>{
+  if(!(e.target instanceof HTMLElement)) return;
+  const act = e.target.dataset.act;
+  const id = CTXMENU.dataset.target;
+  if(!act || !id) return;
+  CTXMENU.style.display="none";
+  if(act==="center"){ CENTER_ID = id; BREADCRUMBS.push(CENTER_ID); await rebuildTree(); await openInfo(CENTER_ID); }
+  if(act==="open-swagger"){ window.open(`/docs`, "_blank"); }           // FastAPI Swagger
+  if(act==="run-qa"){ alert(`QA для ${id} запущен (stub)`); }
+  if(act==="validate"){ const r = await getJSON(`/api/validate`); alert(r? JSON.stringify(r).slice(0,500):"no response"); }
+});
+
+/* crumbs & controls */
+$("#homeBtn").onclick = async ()=>{ CENTER_ID="platform"; BREADCRUMBS=["platform"]; await rebuildTree(); await openInfo("platform"); };
+function renderCrumbs(){
+  const c = $("#crumbs");
+  c.innerHTML = BREADCRUMBS.map((id,i)=>{
+    return i<BREADCRUMBS.length-1 ? `<a href="#" data-i="${i}">${id}</a>` : `<b>${id}</b>`;
+  }).join(" / ");
+  c.querySelectorAll("a").forEach(a=>{
+    a.onclick = async (ev)=>{
+      ev.preventDefault();
+      const i = +a.dataset.i;
+      BREADCRUMBS = BREADCRUMBS.slice(0,i+1);
+      CENTER_ID = BREADCRUMBS[BREADCRUMBS.length-1];
+      await rebuildTree();
+      await openInfo(CENTER_ID);
+    };
+  });
+}
+
+/* filters */
+document.querySelectorAll(".fl").forEach(ch=>{
+  ch.addEventListener("change", async ()=>{
+    FILTERS = new Set([...document.querySelectorAll(".fl:checked")].map(x=>x.value));
+    await rebuildTree();
+  });
+});
+
+/* search */
+$("#search").addEventListener("input", async (e)=>{
+  LAST_SEARCH = e.target.value.trim().toLowerCase();
+  draw(); // lightweight: highlight matches as selection
+});
+
+/* selection highlight in draw() by name substring */
+const _drawOrig = draw;
+draw = function(){
+  _drawOrig();
+  if(!LAST_SEARCH) return;
+  CTX.save();
+  LAYOUT.forEach(n=>{
+    if(n.name.toLowerCase().includes(LAST_SEARCH)){
+      const g = n._geom;
+      CTX.strokeStyle = "#ffd166";
+      CTX.lineWidth = 3;
+      arcPath(CTX, CX, CY, g.r0, g.r1, g.th0, g.th1);
+      CTX.stroke();
+    }
+  });
+  CTX.restore();
+}
+
+/* =================== info panel =================== */
+async function openInfo(id){
+  const s = await loadService(id);
+  const box = $("#info");
+  if(id==="platform"){
+    box.innerHTML = `<div class="kv">
+      <div>Узел:</div><div><b>Platform</b></div>
+      <div>Описание:</div><div>Центральная платформа. Нажми на сектор сервиса для дрилл-дауна.</div>
+    </div>`;
+    renderCrumbs(); draw(); return;
+  }
+  box.innerHTML = `
+    <h4>${s.title} <small>(${s.name})</small></h4>
+    <div class="kv">
+      <div>Тип:</div><div>${s.type || "service"}</div>
+      <div>Версия:</div><div>${s.version || "—"}</div>
+      <div>Зависит от:</div><div>${(s.depends_on||[]).join(", ")||"—"}</div>
+    </div>
+    <h4 style="margin-top:10px">Модели</h4>
+    <ul class="slim">${(s.models||[]).map(m=>`<li><code>${m}</code></li>`).join("")||"<li>—</li>"}</ul>
+    <h4 style="margin-top:10px">Маршруты</h4>
+    <ul class="slim">${(s.routes||[]).map(r=>`<li><code>${r.method.toUpperCase()}</code> ${r.path} — ${r.summary||""}</li>`).join("")||"<li>—</li>"}</ul>
+    <div style="margin-top:12px; display:flex; gap:8px">
+      <button class="btn" onclick="window.open('/docs','_blank')">Swagger</button>
+      <button class="btn" onclick="alert('QA stub')">Run QA</button>
+      <button class="btn" onclick="fetch('/api/validate').then(r=>r.json()).then(x=>alert(JSON.stringify(x).slice(0,600)))">Validate</button>
+    </div>
+  `;
+  renderCrumbs(); draw();
+}
+
+/* =================== boot =================== */
+async function rebuildTree(){
+  // сохраняем прошлую геометрию для анимации
+  PREV_GEOM.clear();
+  LAYOUT.forEach(n=>{
+    if (n && n.id && n._geom) PREV_GEOM.set(n.id, {...n._geom});
+  });
+
+  TREE = await buildTree(CENTER_ID);
+  resize();
+
+  // рисуем с анимацией
+  await drawAnimated();
+}
+window.addEventListener("resize", ()=>{ resize(); draw(); });
+
+(async function init(){
+  resize();
+  FULL_GRAPH = await loadGraph();
+  await rebuildTree();
+  await openInfo("platform");
+})();
+</script>
+</body>
+</html>
