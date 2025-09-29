@@ -104,7 +104,7 @@ let CANVAS, CTX, W, H, CX, CY, RING_W;
 let FULL_GRAPH = null;     // {nodes, edges}
 let TREE = null;           // root {id, name, type, weight, children[]}
 let CENTER_ID = "platform";
-let BREADCRUMBS = ["platform"];
+let BREADCRUMBS = [{id:"platform", label:"Platform"}];
 let FILTERS = new Set(["frontend","backend","qa"]);
 let HOV = null;            // hovered node
 let SELECTION = new Set(); // shift-select
@@ -222,6 +222,37 @@ async function buildTree(rootId){
   }
   assignWeights(root);
   return root;
+}
+
+function findPath(root, targetId){
+  const stack = [];
+  let result = null;
+  function dfs(node){
+    if(!node || result) return false;
+    stack.push({id: node.id, label: node.name || node.id});
+    if(node.id === targetId){
+      result = stack.slice();
+      stack.pop();
+      return true;
+    }
+    const children = node.children || [];
+    for(const child of children){
+      if(dfs(child)){
+        stack.pop();
+        return true;
+      }
+    }
+    stack.pop();
+    return false;
+  }
+  dfs(root);
+  if(result && result.length){
+    return result;
+  }
+  if(root){
+    return [{id: root.id, label: root.name || root.id}];
+  }
+  return [{id: targetId, label: targetId}];
 }
 
 /* =================== layout =================== */
@@ -485,7 +516,6 @@ CANVAS.addEventListener("click", async e=>{
   }
   // drill-down: make clicked sector the new center
   CENTER_ID = n.id;
-  BREADCRUMBS.push(CENTER_ID);
   await rebuildTree();
   await openInfo(CENTER_ID);
 });
@@ -507,25 +537,35 @@ CTXMENU.addEventListener("click", async e=>{
   const id = CTXMENU.dataset.target;
   if(!act || !id) return;
   CTXMENU.style.display="none";
-  if(act==="center"){ CENTER_ID = id; BREADCRUMBS.push(CENTER_ID); await rebuildTree(); await openInfo(CENTER_ID); }
+  if(act==="center"){ CENTER_ID = id; await rebuildTree(); await openInfo(CENTER_ID); }
   if(act==="open-swagger"){ window.open(`/docs`, "_blank"); }           // FastAPI Swagger
   if(act==="run-qa"){ alert(`QA для ${id} запущен (stub)`); }
   if(act==="validate"){ const r = await getJSON(`/api/validate`); alert(r? JSON.stringify(r).slice(0,500):"no response"); }
 });
 
 /* crumbs & controls */
-$("#homeBtn").onclick = async ()=>{ CENTER_ID="platform"; BREADCRUMBS=["platform"]; await rebuildTree(); await openInfo("platform"); };
+$("#homeBtn").onclick = async ()=>{ CENTER_ID="platform"; await rebuildTree(); await openInfo("platform"); };
+function escapeHtml(str){
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 function renderCrumbs(){
   const c = $("#crumbs");
-  c.innerHTML = BREADCRUMBS.map((id,i)=>{
-    return i<BREADCRUMBS.length-1 ? `<a href="#" data-i="${i}">${id}</a>` : `<b>${id}</b>`;
+  c.innerHTML = BREADCRUMBS.map((node,i)=>{
+    const text = escapeHtml(node.label);
+    const id = escapeHtml(node.id);
+    return i<BREADCRUMBS.length-1 ? `<a href="#" data-i="${i}" data-id="${id}">${text}</a>` : `<b>${text}</b>`;
   }).join(" / ");
   c.querySelectorAll("a").forEach(a=>{
     a.onclick = async (ev)=>{
       ev.preventDefault();
       const i = +a.dataset.i;
       BREADCRUMBS = BREADCRUMBS.slice(0,i+1);
-      CENTER_ID = BREADCRUMBS[BREADCRUMBS.length-1];
+      CENTER_ID = BREADCRUMBS[BREADCRUMBS.length-1].id;
       await rebuildTree();
       await openInfo(CENTER_ID);
     };
@@ -604,6 +644,8 @@ async function rebuildTree(){
   });
 
   TREE = await buildTree(CENTER_ID);
+  BREADCRUMBS = findPath(TREE, CENTER_ID);
+  renderCrumbs();
   resize();
 
   // рисуем с анимацией
