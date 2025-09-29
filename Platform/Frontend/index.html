@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Platform — Sunburst Map</title>
+<title>Платформа EGIDE — карта сервисов</title>
 <style>
   :root { color-scheme: dark; }
   html,body { height:100%; }
@@ -16,7 +16,7 @@
   #crumbs { font-size:13px; opacity:.9 }
   #crumbs a { color:#8ab4ff; text-decoration:none; }
   #search { min-width:260px; padding:7px 10px; border-radius:6px; border:1px solid #273446; background:#111823; color:#dfe7f1; }
-  #filters { display:flex; align-items:center; gap:10px; margin-left:auto; font-size:13px; }
+  #topbar .spacer { flex:1; }
 
   /* main */
   #main { display:grid; grid-template-columns: 1fr 360px; height:100%; }
@@ -40,14 +40,10 @@
 </head>
 <body>
   <div id="topbar">
-    <button class="btn" id="homeBtn">Platform</button>
+    <button class="btn" id="homeBtn">Платформа</button>
     <div id="crumbs"></div>
+    <div class="spacer"></div>
     <input id="search" placeholder="Поиск: сервис / модель / маршрут"/>
-    <div id="filters">
-      <label><input type="checkbox" class="fl" value="frontend" checked/> Frontend</label>
-      <label><input type="checkbox" class="fl" value="backend" checked/> Backend</label>
-      <label><input type="checkbox" class="fl" value="qa" checked/> QA</label>
-    </div>
   </div>
 
   <div id="main">
@@ -87,25 +83,401 @@ function arcPath(ctx, cx, cy, r0, r1, th0, th1){
   ctx.closePath();
 }
 function lerp(a,b,t){ return a + (b-a)*t; }
+const LABEL_FONT_FAMILY = "system-ui,Segoe UI,Roboto";
+function makeLabel(ctx, name, geom){
+  if(!geom) return null;
+  const arc = geom.th1 - geom.th0;
+  if(arc <= 0) return null;
+  const rMid = (geom.r0 + geom.r1) / 2;
+  const arcLength = Math.abs(arc) * rMid;
+  const maxWidth = Math.max(0, arcLength - 10);
+  if(maxWidth <= 0) return null;
+  const prevFont = ctx.font;
+  let result = null;
+  const sizes = [12, 11, 10, 9, 8];
+  for(const size of sizes){
+    ctx.font = `${size}px ${LABEL_FONT_FAMILY}`;
+    if(ctx.measureText(name).width <= maxWidth){
+      result = { text: name, size };
+      break;
+    }
+    let truncated = name;
+    while(truncated.length > 1){
+      truncated = truncated.slice(0, -1);
+      const candidate = truncated + "…";
+      if(ctx.measureText(candidate).width <= maxWidth){
+        result = { text: candidate, size };
+        break;
+      }
+    }
+    if(result) break;
+  }
+  ctx.font = prevFont;
+  return result;
+}
 
 const COLORS = {
   platform: "#1f6feb",
+  service:  "#ffad60",
   backend:  "#4cc9f0",
   frontend: "#80ed99",
   qa:       "#c77dff",
   other:    "#91a7ff"
 };
+const CATEGORY_LABELS = { frontend: "Frontend", backend: "Backend", qa: "QA" };
+const DEMO_PLATFORM = {
+  id: "platform",
+  name: "Платформа EGIDE",
+  description: "Базовая платформа, объединяющая цифровые сервисы. Платформа — фундамент, остальные уровни наследуют от нее общий язык, стандарты и инфраструктуру.",
+  principles: [
+    "Единая платформа как точка сборки всех сервисов",
+    "Принцип модели данных: все сервисы наследуют каноническую модель платформы",
+    "Принцип REST-запросов: каждый сервис соблюдает платформенные контракты и идемпотентность",
+    "Сервисы строятся поверх платформенных контрактов",
+    "Frontend, Backend и QA для сервиса работают как единая автономная команда"
+  ],
+  services: [
+    {
+      id: "customer-onboarding",
+      name: "Онбординг клиентов",
+      summary: "Полный цикл привлечения и верификации клиента от заявки до активации продукта.",
+      mission: "Сделать старт работы с продуктом прозрачным и полностью самообслуживаемым.",
+      owner: "Stream Onboarding",
+      lead: "Ирина Волкова",
+      status: "production",
+      impact: "Высокий",
+      sla: "99.95%",
+      roadmap: [
+        "Автоматическая переоценка рисков",
+        "Единая витрина тарифов",
+        "Синхронизация статусов с партнёрами"
+      ],
+      categoryNotes: {
+        frontend: "Команда UI обеспечивает быстрый отклик и доступность интерфейсов для разных устройств.",
+        backend: "Микросервисы построены на событиях, обеспечивают непрерывность процессов KYC.",
+        qa: "QA-группа держит контроль критических пользовательских сценариев и регресса."
+      },
+      frontend: [
+        {
+          id: "customer-portal",
+          name: "Клиентский портал",
+          description: "Главная точка входа для новых клиентов с трекингом статуса заявки.",
+          stack: "React, Vite, RTK Query",
+          status: "prod",
+          lead: "Дмитрий Мизин",
+          repo: "ssh://git/internal/customer-portal",
+          metrics: { users: "42K MAU", uptime: "99.9%" }
+        },
+        {
+          id: "kyc-form",
+          name: "KYC форма",
+          description: "Анкета с динамическими шагами, адаптирующимися под сегмент клиента.",
+          stack: "React Hook Form, Zustand",
+          status: "prod",
+          lead: "Анна Савина",
+          repo: "ssh://git/internal/kyc-form",
+          metrics: { conversion: "+18% после A/B" }
+        }
+      ],
+      backend: [
+        {
+          id: "workflow-engine",
+          name: "Workflow Engine",
+          description: "Оркестрация этапов онбординга, вебхуки и SLA мониторинг.",
+          stack: "Kotlin, Spring Boot, Kafka",
+          status: "prod",
+          lead: "Павел Романов",
+          repo: "ssh://git/internal/workflow-engine",
+          metrics: { throughput: "12K процессов/ч", latency: "350 мс P95" }
+        },
+        {
+          id: "risk-evaluator",
+          name: "Risk Evaluator",
+          description: "Скоринг рисков и проверка санкционных списков.",
+          stack: "Python, FastAPI, Redis",
+          status: "beta",
+          lead: "Женя Гришин",
+          repo: "ssh://git/internal/risk-evaluator",
+          metrics: { coverage: "98% матчей" }
+        }
+      ],
+      qa: [
+        {
+          id: "onboarding-regression",
+          name: "Регрессия онбординга",
+          description: "Полный регрессионный сценарий от заявки до активации.",
+          stack: "Playwright, Allure",
+          status: "nightly",
+          lead: "Татьяна Журавлёва",
+          cadence: "Каждые 4 часа",
+          coverage: "85% критических путей"
+        },
+        {
+          id: "api-contract-tests",
+          name: "Контрактные тесты API",
+          description: "Проверка соответствия API платформенным схемам.",
+          stack: "Postman CLI, Newman",
+          status: "ci",
+          lead: "Михаил Осипов",
+          cadence: "При каждом мерже",
+          coverage: "100% публичных контрактов"
+        }
+      ]
+    },
+    {
+      id: "payments-core",
+      name: "Платёжное ядро",
+      summary: "Приём и маршрутизация платежей во всех каналах.",
+      mission: "Гарантировать мгновенную и безопасную обработку транзакций.",
+      owner: "Payments Tribe",
+      lead: "Максим Лавров",
+      status: "production",
+      impact: "Критический",
+      sla: "99.99%",
+      roadmap: [
+        "Единый расчётный календарь",
+        "Интеллектуальный ретраинг операций",
+        "Realtime мониторинг отклонений"
+      ],
+      categoryNotes: {
+        frontend: "Интерфейсы построены поверх платформенных компонентов и поддерживают white-label.",
+        backend: "Домены платежей разделены на изолированные bounded context'ы.",
+        qa: "Используется сет стейджингов и контрактные провайдеры для предотвращения регрессов."
+      },
+      frontend: [
+        {
+          id: "merchant-dashboard",
+          name: "Кабинет мерчанта",
+          description: "Отображение платежных потоков и управление витринами.",
+          stack: "Vue 3, Pinia",
+          status: "prod",
+          lead: "Сергей Фомин",
+          repo: "ssh://git/internal/merchant-dashboard",
+          metrics: { nps: "54", sessions: "12K в сутки" }
+        }
+      ],
+      backend: [
+        {
+          id: "payment-router",
+          name: "Payment Router",
+          description: "Маршрутизация операций по шлюзам и провайдерам.",
+          stack: "Go, gRPC, Kafka",
+          status: "prod",
+          lead: "Влад Колесник",
+          repo: "ssh://git/internal/payment-router",
+          metrics: { latency: "180 мс P95", volume: "2.1M txn/день" }
+        },
+        {
+          id: "settlement-service",
+          name: "Settlement Service",
+          description: "Расчёты и акты сверок с мерчантами.",
+          stack: "Java, Quarkus, PostgreSQL",
+          status: "prod",
+          lead: "Екатерина Белова",
+          repo: "ssh://git/internal/settlement-service",
+          metrics: { reports: "6K отчётов/день" }
+        }
+      ],
+      qa: [
+        {
+          id: "payment-e2e",
+          name: "E2E платежи",
+          description: "Сквозные сценарии приёма и возврата платежей.",
+          stack: "Cypress, TypeScript",
+          status: "prod",
+          lead: "Юлия Горина",
+          cadence: "Каждый час",
+          coverage: "78% денежных потоков"
+        },
+        {
+          id: "load-benchmarks",
+          name: "Нагрузочные бенчмарки",
+          description: "Профилирование производительности критических операций.",
+          stack: "Gatling, Grafana",
+          status: "weekly",
+          lead: "Алексей Логинов",
+          cadence: "Раз в неделю",
+          coverage: "Пиковые сценарии чек-аута"
+        }
+      ]
+    },
+    {
+      id: "insights-hub",
+      name: "Insights Hub",
+      summary: "Единое хранилище аналитики и витрин для продуктовых команд.",
+      mission: "Доставлять аналитические инсайты в течение минут, а не дней.",
+      owner: "Data Platform",
+      lead: "Олег Сафронов",
+      status: "beta",
+      impact: "Стратегический",
+      sla: "99.5%",
+      roadmap: [
+        "Self-service построение витрин",
+        "ML-пайплайны с автоматическим деплоем",
+        "Каталогирование показателей"
+      ],
+      categoryNotes: {
+        frontend: "Витрины и конструкторы отчётов работают поверх design-system платформы.",
+        backend: "Дата-канал построен на потоковой обработке и lakehouse-подходе.",
+        qa: "QA команда поддерживает доверие к данным через автоматические проверки качества."
+      },
+      frontend: [
+        {
+          id: "analytics-workbench",
+          name: "Analytics Workbench",
+          description: "Конструктор отчётов и визуализаций для продуктовых менеджеров.",
+          stack: "React, Recharts",
+          status: "beta",
+          lead: "Алина Рябова",
+          repo: "ssh://git/internal/analytics-workbench",
+          metrics: { adoption: "15 команд" }
+        },
+        {
+          id: "metrics-catalog",
+          name: "Каталог метрик",
+          description: "Единое место для описаний KPI и метрик.",
+          stack: "Next.js, Chakra UI",
+          status: "beta",
+          lead: "Никита Круглов",
+          repo: "ssh://git/internal/metrics-catalog",
+          metrics: { entries: "320 описаний" }
+        }
+      ],
+      backend: [
+        {
+          id: "event-hub",
+          name: "Event Hub",
+          description: "Сбор и маршрутизация событий продукта.",
+          stack: "Scala, Akka Streams, ClickHouse",
+          status: "prod",
+          lead: "Игорь Щербаков",
+          repo: "ssh://git/internal/event-hub",
+          metrics: { ingestion: "8 млрд событий/сутки" }
+        },
+        {
+          id: "ml-pipeline",
+          name: "ML Pipeline",
+          description: "Платформа обучения и выката моделей.",
+          stack: "Python, Airflow, MLflow",
+          status: "beta",
+          lead: "Лидия Бахметьева",
+          repo: "ssh://git/internal/ml-pipeline",
+          metrics: { models: "24 активных" }
+        }
+      ],
+      qa: [
+        {
+          id: "data-quality",
+          name: "Data Quality",
+          description: "Автоматические проверки качества данных и алерты.",
+          stack: "Great Expectations, DBT",
+          status: "ci",
+          lead: "Глеб Назаров",
+          cadence: "При каждой поставке",
+          coverage: "112 витрин"
+        },
+        {
+          id: "schema-guardian",
+          name: "Schema Guardian",
+          description: "Контроль схем событий и обратная совместимость.",
+          stack: "OpenAPI Diff, Kafka TestKit",
+          status: "prod",
+          lead: "Елена Афанасьева",
+          cadence: "На каждый релиз",
+          coverage: "58 контрактов"
+        }
+      ]
+    }
+  ]
+};
 // ---- NEW: animation & aggregation tuning ----
 const MIN_ARC_DEG = 6;     // минимальный видимый угол сектора; меньше — уходит в "+N"
 const ANIM_MS = 350;       // длительность анимации дрилл-дауна в мс
 let PREV_GEOM = new Map(); // id -> {th0, th1, r0, r1} из прошлого кадра (для анимации)
+
+function findServiceById(id){
+  return DEMO_PLATFORM.services.find(s=>s.id===id);
+}
+function getCategoryItems(service, category){
+  if(!service) return [];
+  return (service[category] || []).slice();
+}
+function getEntity(id){
+  if(!id) return getEntity("platform");
+  if(id === "platform"){
+    return { kind: "platform", id: "platform", title: DEMO_PLATFORM.name };
+  }
+  const parts = id.split(":");
+  const service = findServiceById(parts[0]);
+  if(!service){
+    return null;
+  }
+  if(parts.length === 1){
+    return { kind: "service", id: service.id, service, title: service.name };
+  }
+  const category = parts[1];
+  if(!(category in CATEGORY_LABELS)){
+    return null;
+  }
+  if(parts.length === 2){
+    const items = getCategoryItems(service, category);
+    return {
+      kind: "category",
+      id: `${service.id}:${category}`,
+      service,
+      category,
+      items,
+      title: `${CATEGORY_LABELS[category]} • ${service.name}`
+    };
+  }
+  const componentId = parts.slice(2).join(":");
+  const component = getCategoryItems(service, category).find(c=>c.id===componentId);
+  if(!component){
+    return null;
+  }
+  return {
+    kind: "component",
+    id: `${service.id}:${category}:${component.id}`,
+    service,
+    category,
+    component,
+    title: component.name
+  };
+}
+function getCenterLabel(){
+  const entity = getEntity(CENTER_ID);
+  if(!entity) return CENTER_ID;
+  if(entity.kind === "platform") return DEMO_PLATFORM.name;
+  if(entity.kind === "service") return entity.service.name;
+  if(entity.kind === "category") return CATEGORY_LABELS[entity.category];
+  if(entity.kind === "component") return entity.component.name;
+  return CENTER_ID;
+}
+function computeBreadcrumbs(id){
+  const entity = getEntity(id) || getEntity("platform");
+  const crumbs = [{ id: "platform", label: DEMO_PLATFORM.name }];
+  if(!entity || entity.kind === "platform"){
+    return crumbs;
+  }
+  const service = entity.service || findServiceById(entity.id);
+  if(service){
+    crumbs.push({ id: service.id, label: service.name });
+  }
+  if((entity.kind === "category" || entity.kind === "component") && service){
+    const catId = `${service.id}:${entity.category}`;
+    crumbs.push({ id: catId, label: CATEGORY_LABELS[entity.category] });
+  }
+  if(entity.kind === "component" && entity.component){
+    crumbs.push({ id: entity.id, label: entity.component.name });
+  }
+  return crumbs;
+}
 /* =================== state =================== */
 let CANVAS, CTX, W, H, CX, CY, RING_W;
 let FULL_GRAPH = null;     // {nodes, edges}
 let TREE = null;           // root {id, name, type, weight, children[]}
 let CENTER_ID = "platform";
-let BREADCRUMBS = [{id:"platform", label:"Platform"}];
-let FILTERS = new Set(["frontend","backend","qa"]);
+let BREADCRUMBS = [{id:"platform", label: DEMO_PLATFORM.name }];
 let HOV = null;            // hovered node
 let SELECTION = new Set(); // shift-select
 let LAYOUT = [];           // list of drawn sectors with geometry for hit-test
@@ -148,111 +520,112 @@ async function loadGraph(){
   };
 }
 
-async function loadService(id){
-  const s = await getJSON(`/api/service/${id}`);
-  if(s && !s.error) return s;
-  // fallback for demo
-  return {
-    name: id, title: id, description:"", depends_on:[], models:[], routes:[]
-  };
-}
-
 /* =================== tree building =================== */
-async function buildTree(rootId){
-  // 1) Пробуем готовое дерево от бэка: /api/tree?root=...
-  const serverTree = await getJSON(`/api/tree?root=${encodeURIComponent(rootId)}`);
-  if (serverTree && serverTree.id) {
-    // сервер может не прислать type/weight — подставим дефолты
-    function fill(n){
-      n.type = n.type || "backend";
-      n.weight = n.weight || 1;
-      (n.children||[]).forEach(fill);
-    }
-    fill(serverTree);
-    return serverTree;
+function assignWeights(node){
+  if(!node.children || node.children.length === 0){
+    node.weight = node.weight || 1;
+    return node.weight;
   }
-
-  // 2) Fallback: строим дерево из FULL_GRAPH, как раньше
-  const nodes = new Map(FULL_GRAPH.nodes.map(n=>[n.id,n]));
-  const adjOut = new Map(), adjIn = new Map();
-  FULL_GRAPH.edges.forEach(e=>{
-    if(!adjOut.has(e.from)) adjOut.set(e.from, new Set());
-    if(!adjIn.has(e.to)) adjIn.set(e.to, new Set());
-    adjOut.get(e.from).add(e.to);
-    adjIn.get(e.to).add(e.from);
+  let sum = 0;
+  node.children.forEach(child=>{
+    sum += assignWeights(child);
   });
-
-  // BFS outward layers by "is connected (attached) OR depends_on from this root"
-  const seen = new Set([rootId]);
-  const rootNode = nodes.get(rootId) || {id:rootId,label:rootId,type:"backend"};
-  const root = { id:rootNode.id, name:rootNode.label||rootId, type:rootNode.type||"backend", weight:1, children:[] };
-
-  function neighbors(id){
-    // direct connections either direction with id
-    const outs = [...(adjOut.get(id)||[])];
-    const ins  = [...(adjIn.get(id)||[])];
-    return Array.from(new Set(outs.concat(ins)));
-  }
-
-  const q = [{treeNode: root, graphId: rootId, depth:0}];
-  const MAX_DEPTH = 3;
-  while(q.length){
-    const cur = q.shift();
-    if(cur.depth >= MAX_DEPTH) continue;
-    const nbs = neighbors(cur.graphId).filter(x=>!seen.has(x));
-    const filtered = nbs.filter(id=>{
-      const nd = nodes.get(id);
-      const t = (nd && nd.type) || "backend";
-      return FILTERS.has(t) || t==="platform";
-    });
-    filtered.forEach(id=>{
-      seen.add(id);
-      const nd = nodes.get(id) || {id, label:id, type:"backend"};
-      const child = { id: nd.id, name: nd.label||id, type: nd.type||"backend", weight: 1, children: [] };
-      cur.treeNode.children.push(child);
-      q.push({treeNode: child, graphId: id, depth: cur.depth+1});
-    });
-  }
-  function assignWeights(n){
-    if(!n.children || n.children.length===0){ n.weight = 1; return 1; }
-    let sum = 0;
-    n.children.forEach(c=> sum += assignWeights(c));
-    n.weight = Math.max(1, sum);
-    return n.weight;
-  }
-  assignWeights(root);
-  return root;
+  node.weight = Math.max(1, sum);
+  return node.weight;
 }
 
-function findPath(root, targetId){
-  const stack = [];
-  let result = null;
-  function dfs(node){
-    if(!node || result) return false;
-    stack.push({id: node.id, label: node.name || node.id});
-    if(node.id === targetId){
-      result = stack.slice();
-      stack.pop();
-      return true;
-    }
-    const children = node.children || [];
-    for(const child of children){
-      if(dfs(child)){
-        stack.pop();
-        return true;
-      }
-    }
-    stack.pop();
-    return false;
+async function buildTree(rootId){
+  const entity = getEntity(rootId) || getEntity("platform");
+  if(!entity){
+    return assignWeights({ id: "platform", name: DEMO_PLATFORM.name, type: "platform", weight: 1, children: [] });
   }
-  dfs(root);
-  if(result && result.length){
-    return result;
+
+  if(entity.kind === "platform"){
+    const root = {
+      id: "platform",
+      name: DEMO_PLATFORM.name,
+      type: "platform",
+      weight: 1,
+      children: DEMO_PLATFORM.services.map(service=>({
+        id: service.id,
+        name: service.name,
+        type: "service",
+        weight: Math.max(1, (service.frontend.length + service.backend.length + service.qa.length) || 1),
+        children: []
+      }))
+    };
+    assignWeights(root);
+    return root;
   }
-  if(root){
-    return [{id: root.id, label: root.name || root.id}];
+
+  if(entity.kind === "service"){
+    const service = entity.service;
+    const children = [];
+    ["frontend","backend","qa"].forEach(category=>{
+      const items = getCategoryItems(service, category);
+      if(items.length === 0) return;
+      children.push({
+        id: `${service.id}:${category}`,
+        name: CATEGORY_LABELS[category],
+        type: category,
+        weight: Math.max(1, items.length),
+        children: items.map(comp=>({
+          id: `${service.id}:${category}:${comp.id}`,
+          name: comp.name,
+          type: category,
+          weight: comp.weight || 1,
+          children: []
+        }))
+      });
+    });
+    const root = {
+      id: service.id,
+      name: service.name,
+      type: "service",
+      weight: Math.max(1, children.length || 1),
+      children
+    };
+    assignWeights(root);
+    return root;
   }
-  return [{id: targetId, label: targetId}];
+
+  if(entity.kind === "category"){
+    const service = entity.service;
+    const category = entity.category;
+    const items = entity.items;
+    const root = {
+      id: `${service.id}:${category}`,
+      name: `${CATEGORY_LABELS[category]}`,
+      type: category,
+      weight: Math.max(1, items.length || 1),
+      children: items.map(comp=>({
+        id: `${service.id}:${category}:${comp.id}`,
+        name: comp.name,
+        type: category,
+        weight: comp.weight || 1,
+        children: []
+      }))
+    };
+    assignWeights(root);
+    return root;
+  }
+
+  if(entity.kind === "component"){
+    const service = entity.service;
+    const category = entity.category;
+    const comp = entity.component;
+    const root = {
+      id: `${service.id}:${category}:${comp.id}`,
+      name: comp.name,
+      type: category,
+      weight: 1,
+      children: []
+    };
+    assignWeights(root);
+    return root;
+  }
+
+  return assignWeights({ id: "platform", name: DEMO_PLATFORM.name, type: "platform", weight: 1, children: [] });
 }
 
 /* =================== layout =================== */
@@ -348,10 +721,10 @@ function draw(){
   CTX.beginPath(); CTX.arc(CX,CY, RING_W*0.65, 0, Math.PI*2); CTX.fill(); CTX.stroke();
 
   CTX.fillStyle = "#dfe7f1";
-  CTX.font = `${Math.max(14, Math.floor(RING_W*0.22))}px system-ui,Segoe UI,Roboto`;
+  CTX.font = `${Math.max(14, Math.floor(RING_W*0.22))}px ${LABEL_FONT_FAMILY}`;
   CTX.textAlign = "center";
   CTX.textBaseline = "middle";
-  CTX.fillText(CENTER_ID, CX, CY);
+  CTX.fillText(getCenterLabel(), CX, CY);
 
   // draw sectors
   LAYOUT = [];
@@ -373,15 +746,17 @@ function draw(){
     const [lx,ly] = polar(CX,CY, rMid, thMid);
     const visibleAngle = deg(n._geom.th1 - n._geom.th0);
     if(visibleAngle > 8){
-      CTX.save();
-      CTX.translate(lx,ly);
-      CTX.rotate(thMid + Math.PI/2);
-      CTX.fillStyle = "#e7edf5";
-      CTX.font = "12px system-ui,Segoe UI,Roboto";
-      const text = n.name.length>18? n.name.slice(0,17)+"…" : n.name;
-      CTX.textAlign = "center"; CTX.textBaseline = "middle";
-      CTX.fillText(text, 0, 0);
-      CTX.restore();
+      const label = makeLabel(CTX, n.name, n._geom);
+      if(label){
+        CTX.save();
+        CTX.translate(lx,ly);
+        CTX.rotate(thMid + Math.PI/2);
+        CTX.fillStyle = "#e7edf5";
+        CTX.font = `${label.size}px ${LABEL_FONT_FAMILY}`;
+        CTX.textAlign = "center"; CTX.textBaseline = "middle";
+        CTX.fillText(label.text, 0, 0);
+        CTX.restore();
+      }
     }
     // keep for hit-test
     LAYOUT.push(n);
@@ -418,9 +793,9 @@ async function drawAnimated(){
       CTX.lineWidth = 2;
       CTX.beginPath(); CTX.arc(CX,CY, RING_W*0.65, 0, Math.PI*2); CTX.fill(); CTX.stroke();
       CTX.fillStyle = "#dfe7f1";
-      CTX.font = `${Math.max(14, Math.floor(RING_W*0.22))}px system-ui,Segoe UI,Roboto`;
+      CTX.font = `${Math.max(14, Math.floor(RING_W*0.22))}px ${LABEL_FONT_FAMILY}`;
       CTX.textAlign = "center"; CTX.textBaseline = "middle";
-      CTX.fillText(CENTER_ID, CX, CY);
+      CTX.fillText(getCenterLabel(), CX, CY);
 
       // интерполяция и рендер секторов
       targetFlat.forEach(n=>{
@@ -447,15 +822,17 @@ async function drawAnimated(){
         const [lx,ly] = polar(CX,CY, rMid, thMid);
         const visibleAngle = deg(geom.th1 - geom.th0);
         if(visibleAngle > 8){
-          CTX.save();
-          CTX.translate(lx,ly);
-          CTX.rotate(thMid + Math.PI/2);
-          CTX.fillStyle = "#e7edf5";
-          CTX.font = "12px system-ui,Segoe UI,Roboto";
-          const text = n.name.length>18? n.name.slice(0,17)+"…" : n.name;
-          CTX.textAlign = "center"; CTX.textBaseline = "middle";
-          CTX.fillText(text, 0, 0);
-          CTX.restore();
+          const label = makeLabel(CTX, n.name, geom);
+          if(label){
+            CTX.save();
+            CTX.translate(lx,ly);
+            CTX.rotate(thMid + Math.PI/2);
+            CTX.fillStyle = "#e7edf5";
+            CTX.font = `${label.size}px ${LABEL_FONT_FAMILY}`;
+            CTX.textAlign = "center"; CTX.textBaseline = "middle";
+            CTX.fillText(label.text, 0, 0);
+            CTX.restore();
+          }
         }
 
         // сохраняем для hit-test текущую геометрию кадра
@@ -572,14 +949,6 @@ function renderCrumbs(){
   });
 }
 
-/* filters */
-document.querySelectorAll(".fl").forEach(ch=>{
-  ch.addEventListener("change", async ()=>{
-    FILTERS = new Set([...document.querySelectorAll(".fl:checked")].map(x=>x.value));
-    await rebuildTree();
-  });
-});
-
 /* search */
 $("#search").addEventListener("input", async (e)=>{
   LAST_SEARCH = e.target.value.trim().toLowerCase();
@@ -606,33 +975,109 @@ draw = function(){
 
 /* =================== info panel =================== */
 async function openInfo(id){
-  const s = await loadService(id);
   const box = $("#info");
-  if(id==="platform"){
-    box.innerHTML = `<div class="kv">
-      <div>Узел:</div><div><b>Platform</b></div>
-      <div>Описание:</div><div>Центральная платформа. Нажми на сектор сервиса для дрилл-дауна.</div>
-    </div>`;
-    renderCrumbs(); draw(); return;
+  const entity = getEntity(id) || getEntity("platform");
+  if(!entity){
+    box.textContent = "Нет данных для выбранного элемента.";
+    renderCrumbs(); draw();
+    return;
   }
-  box.innerHTML = `
-    <h4>${s.title} <small>(${s.name})</small></h4>
-    <div class="kv">
-      <div>Тип:</div><div>${s.type || "service"}</div>
-      <div>Версия:</div><div>${s.version || "—"}</div>
-      <div>Зависит от:</div><div>${(s.depends_on||[]).join(", ")||"—"}</div>
-    </div>
-    <h4 style="margin-top:10px">Модели</h4>
-    <ul class="slim">${(s.models||[]).map(m=>`<li><code>${m}</code></li>`).join("")||"<li>—</li>"}</ul>
-    <h4 style="margin-top:10px">Маршруты</h4>
-    <ul class="slim">${(s.routes||[]).map(r=>`<li><code>${r.method.toUpperCase()}</code> ${r.path} — ${r.summary||""}</li>`).join("")||"<li>—</li>"}</ul>
-    <div style="margin-top:12px; display:flex; gap:8px">
-      <button class="btn" onclick="window.open('/docs','_blank')">Swagger</button>
-      <button class="btn" onclick="alert('QA stub')">Run QA</button>
-      <button class="btn" onclick="fetch('/api/validate').then(r=>r.json()).then(x=>alert(JSON.stringify(x).slice(0,600)))">Validate</button>
-    </div>
-  `;
-  renderCrumbs(); draw();
+
+  if(entity.kind === "platform"){
+    const principles = DEMO_PLATFORM.principles.map(p=>`<li>${escapeHtml(p)}</li>`).join("");
+    const services = DEMO_PLATFORM.services.map(s=>`<li><b>${escapeHtml(s.name)}</b> — ${escapeHtml(s.summary)}</li>`).join("");
+    box.innerHTML = `
+      <h4>${escapeHtml(DEMO_PLATFORM.name)}</h4>
+      <p style="margin:4px 0 10px">${escapeHtml(DEMO_PLATFORM.description)}</p>
+      <div class="kv" style="margin-bottom:10px">
+        <div>Принципы:</div>
+        <div><ul class="slim">${principles}</ul></div>
+      </div>
+      <h4 style="margin-top:6px">Сервисы на платформе</h4>
+      <ul class="slim">${services}</ul>
+    `;
+    renderCrumbs(); draw();
+    return;
+  }
+
+  if(entity.kind === "service"){
+    const service = entity.service;
+    const categories = ["frontend","backend","qa"].map(cat=>{
+      const items = getCategoryItems(service, cat);
+      if(items.length === 0) return "";
+      const names = items.map(c=>escapeHtml(c.name)).join(", ");
+      return `<li><b>${CATEGORY_LABELS[cat]}</b> (${items.length}) — ${names}</li>`;
+    }).filter(Boolean).join("");
+    const roadmap = (service.roadmap||[]).map(item=>`<li>${escapeHtml(item)}</li>`).join("");
+    box.innerHTML = `
+      <h4>${escapeHtml(service.name)}</h4>
+      <p style="margin:4px 0 10px">${escapeHtml(service.summary)}</p>
+      <div class="kv">
+        <div>Миссия:</div><div>${escapeHtml(service.mission)}</div>
+        <div>Статус:</div><div>${escapeHtml(service.status || "—")}</div>
+        <div>SLA:</div><div>${escapeHtml(service.sla || "—")}</div>
+        <div>Импакт:</div><div>${escapeHtml(service.impact || "—")}</div>
+        <div>Владелец:</div><div>${escapeHtml(service.owner || "—")}</div>
+        <div>Лид:</div><div>${escapeHtml(service.lead || "—")}</div>
+      </div>
+      <h4 style="margin-top:12px">Команды сервиса</h4>
+      <ul class="slim">${categories || "<li>Нет артефактов</li>"}</ul>
+      <h4 style="margin-top:12px">Фокус роадмапа</h4>
+      <ul class="slim">${roadmap || "<li>—</li>"}</ul>
+    `;
+    renderCrumbs(); draw();
+    return;
+  }
+
+  if(entity.kind === "category"){
+    const { service, category, items } = entity;
+    const note = (service.categoryNotes && service.categoryNotes[category]) ? escapeHtml(service.categoryNotes[category]) : "";
+    const rows = items.map(comp=>{
+      const metaParts = [];
+      if(comp.stack) metaParts.push(`<span>Стек: ${escapeHtml(comp.stack)}</span>`);
+      if(comp.status) metaParts.push(`<span>Статус: ${escapeHtml(comp.status)}</span>`);
+      if(comp.lead) metaParts.push(`<span>Лид: ${escapeHtml(comp.lead)}</span>`);
+      if(comp.repo) metaParts.push(`<span>Репозиторий: <code>${escapeHtml(comp.repo)}</code></span>`);
+      if(comp.cadence) metaParts.push(`<span>Частота: ${escapeHtml(comp.cadence)}</span>`);
+      if(comp.coverage) metaParts.push(`<span>Покрытие: ${escapeHtml(comp.coverage)}</span>`);
+      if(comp.metrics){
+        Object.entries(comp.metrics).forEach(([k,v])=>{
+          metaParts.push(`<span>${escapeHtml(k)}: ${escapeHtml(v)}</span>`);
+        });
+      }
+      const meta = metaParts.length ? `<div style="display:flex;flex-direction:column;gap:2px;margin-top:4px;opacity:.85">${metaParts.join("")}</div>` : "";
+      return `<li><b>${escapeHtml(comp.name)}</b><div style="opacity:.8">${escapeHtml(comp.description || "Без описания")}</div>${meta}</li>`;
+    }).join("");
+    box.innerHTML = `
+      <h4>${escapeHtml(CATEGORY_LABELS[category])} · ${escapeHtml(service.name)}</h4>
+      <p style="margin:4px 0 10px">${note}</p>
+      <ul class="slim">${rows || "<li>Нет элементов</li>"}</ul>
+    `;
+    renderCrumbs(); draw();
+    return;
+  }
+
+  if(entity.kind === "component"){
+    const { service, category, component } = entity;
+    const metrics = component.metrics ? Object.entries(component.metrics).map(([k,v])=>`<li><span>${escapeHtml(k)}:</span> <b>${escapeHtml(v)}</b></li>`).join("") : "";
+    box.innerHTML = `
+      <h4>${escapeHtml(component.name)}</h4>
+      <p style="margin:4px 0 10px">${escapeHtml(component.description || "")}</p>
+      <div class="kv">
+        <div>Сервис:</div><div>${escapeHtml(service.name)}</div>
+        <div>Направление:</div><div>${escapeHtml(CATEGORY_LABELS[category])}</div>
+        <div>Стек:</div><div>${escapeHtml(component.stack || "—")}</div>
+        <div>Статус:</div><div>${escapeHtml(component.status || "—")}</div>
+        <div>Лид:</div><div>${escapeHtml(component.lead || "—")}</div>
+        <div>Репозиторий:</div><div>${component.repo ? `<code>${escapeHtml(component.repo)}</code>` : "—"}</div>
+        <div>Частота:</div><div>${escapeHtml(component.cadence || "—")}</div>
+        <div>Покрытие:</div><div>${escapeHtml(component.coverage || "—")}</div>
+      </div>
+      ${metrics ? `<h4 style="margin-top:12px">Метрики</h4><ul class="slim">${metrics}</ul>` : ""}
+    `;
+    renderCrumbs(); draw();
+    return;
+  }
 }
 
 /* =================== boot =================== */
@@ -644,7 +1089,7 @@ async function rebuildTree(){
   });
 
   TREE = await buildTree(CENTER_ID);
-  BREADCRUMBS = findPath(TREE, CENTER_ID);
+  BREADCRUMBS = computeBreadcrumbs(CENTER_ID);
   renderCrumbs();
   resize();
 
