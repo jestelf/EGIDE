@@ -95,7 +95,10 @@ const COLORS = {
   qa:       "#c77dff",
   other:    "#91a7ff"
 };
-
+// ---- NEW: animation & aggregation tuning ----
+const MIN_ARC_DEG = 6;     // минимальный видимый угол сектора; меньше — уходит в "+N"
+const ANIM_MS = 350;       // длительность анимации дрилл-дауна в мс
+let PREV_GEOM = new Map(); // id -> {th0, th1, r0, r1} из прошлого кадра (для анимации)
 /* =================== state =================== */
 let CANVAS, CTX, W, H, CX, CY, RING_W;
 let FULL_GRAPH = null;     // {nodes, edges}
@@ -155,14 +158,24 @@ async function loadService(id){
 }
 
 /* =================== tree building =================== */
-/* If /api/tree?root=ID exists, you can plug here. We assemble from graph. */
-function buildTree(rootId){
+async function buildTree(rootId){
+  // 1) Пробуем готовое дерево от бэка: /api/tree?root=...
+  const serverTree = await getJSON(`/api/tree?root=${encodeURIComponent(rootId)}`);
+  if (serverTree && serverTree.id) {
+    // сервер может не прислать type/weight — подставим дефолты
+    function fill(n){
+      n.type = n.type || "backend";
+      n.weight = n.weight || 1;
+      (n.children||[]).forEach(fill);
+    }
+    fill(serverTree);
+    return serverTree;
+  }
+
+  // 2) Fallback: строим дерево из FULL_GRAPH, как раньше
   const nodes = new Map(FULL_GRAPH.nodes.map(n=>[n.id,n]));
-  const adjOut = new Map(); // who depends on whom (child->parent)
-  const adjIn  = new Map(); // for reverse (parent->children)
+  const adjOut = new Map(), adjIn = new Map();
   FULL_GRAPH.edges.forEach(e=>{
-    // normalize direction: attached/depends_on both mean a relationship;
-    // for sunburst we want outward from center: children are those that directly link from center or depend on it.
     if(!adjOut.has(e.from)) adjOut.set(e.from, new Set());
     if(!adjIn.has(e.to)) adjIn.set(e.to, new Set());
     adjOut.get(e.from).add(e.to);
@@ -182,18 +195,16 @@ function buildTree(rootId){
   }
 
   const q = [{treeNode: root, graphId: rootId, depth:0}];
-  const MAX_DEPTH = 3; // enough for MVP, deeper becomes dense
+  const MAX_DEPTH = 3;
   while(q.length){
     const cur = q.shift();
     if(cur.depth >= MAX_DEPTH) continue;
     const nbs = neighbors(cur.graphId).filter(x=>!seen.has(x));
-    // apply filters by node type
     const filtered = nbs.filter(id=>{
       const nd = nodes.get(id);
       const t = (nd && nd.type) || "backend";
       return FILTERS.has(t) || t==="platform";
     });
-
     filtered.forEach(id=>{
       seen.add(id);
       const nd = nodes.get(id) || {id, label:id, type:"backend"};
@@ -202,8 +213,6 @@ function buildTree(rootId){
       q.push({treeNode: child, graphId: id, depth: cur.depth+1});
     });
   }
-  // compute weights from routes/deps where possible (async-like simplification)
-  // here we just scale by number of children as placeholder; UI still usable.
   function assignWeights(n){
     if(!n.children || n.children.length===0){ n.weight = 1; return 1; }
     let sum = 0;
@@ -220,17 +229,50 @@ function normalizeWeights(children){
   const s = children.reduce((a,c)=>a+(c.weight||1),0) || 1;
   children.forEach(c=> c._w = (c.weight||1)/s);
 }
+// ---- NEW: агрегируем слишком маленькие секторы в "+N" ----
+function aggregateSmall(children, totalAngleRad){
+  if (!children || children.length === 0) return children;
+  const minAngle = rad(MIN_ARC_DEG);
+  const result = [];
+  const small = [];
+  children.forEach(c=>{
+    const frac = (c._w || 0);
+    const span = totalAngleRad * frac;
+    if (span < minAngle) small.push(c);
+    else result.push(c);
+  });
+  if (small.length === 0) return result;
+  // собираем "+N"
+  const agg = {
+    id: "__agg__" + small.map(s=>s.id).join("_").slice(0,40),
+    name: `+${small.length}`,
+    type: "other",
+    weight: small.reduce((a,c)=> a + (c.weight||1), 0),
+    children: small
+  };
+  agg._w = small.reduce((a,c)=> a + (c._w || 0), 0);
+  result.push(agg);
+  // нормализуем _w заново
+  const sumW = result.reduce((a,c)=> a + (c._w || 0), 0) || 1;
+  result.forEach(c=> c._w = (c._w || 0) / sumW);
+  return result;
+}
 
 function layoutRadial(node, th0, th1, r0, ringW, out){
-  // write current node geometry (for hit-test only if not root)
   node._geom = { th0, th1, r0, r1: r0 + ringW };
   out.push(node);
 
   if(!node.children || node.children.length===0) return;
   normalizeWeights(node.children);
+  // агрегируем мелкие сектора перед рекурсией
+  let kids = node.children.map(c=> ({...c}));
+  const totalAngle = (th1 - th0);
+  kids.forEach(c=> c._w = (c._w ?? (c.weight||1)));
+  kids = aggregateSmall(kids, totalAngle);
+
   let cursor = th0;
-  node.children.forEach(ch=>{
-    const span = (th1 - th0) * ch._w;
+  kids.forEach(ch=>{
+    const span = totalAngle * ch._w;
     layoutRadial(ch, cursor, cursor+span, r0+ringW, ringW, out);
     cursor += span;
   });
@@ -314,7 +356,88 @@ function draw(){
     LAYOUT.push(n);
   });
 }
+async function drawAnimated(){
+  // готовим новый плоский список (чтобы вычислить целевые геометрии)
+  const targetFlat = [];
+  layoutRadial(TREE, -Math.PI/2, 1.5*Math.PI, RING_W*0.65, RING_W, targetFlat);
 
+  // сопоставим целевые геометрии по id
+  const TARGET_MAP = new Map();
+  targetFlat.forEach(n=>{
+    if (n && n.id && n._geom) TARGET_MAP.set(n.id, n._geom);
+  });
+
+  const t0 = performance.now();
+  const dur = ANIM_MS;
+
+  return new Promise(res=>{
+    const tick = (now)=>{
+      const t = clamp((now - t0)/dur, 0, 1);
+      // для кадра: интерполируем геометрию каждого узла между PREV_GEOM и TARGET_MAP
+      LAYOUT = [];
+      CTX.clearRect(0,0,W,H);
+      // рисуем центр
+      const g = CTX.createRadialGradient(CX,CY,0, CX,CY, Math.min(W,H)/2);
+      g.addColorStop(0, "rgba(32,48,70,0.35)");
+      g.addColorStop(1, "rgba(0,0,0,0)");
+      CTX.fillStyle = g;
+      CTX.beginPath(); CTX.arc(CX,CY,Math.min(W,H)/2,0,Math.PI*2); CTX.fill();
+      CTX.fillStyle = "#203b60";
+      CTX.strokeStyle = "#3d6aa1";
+      CTX.lineWidth = 2;
+      CTX.beginPath(); CTX.arc(CX,CY, RING_W*0.65, 0, Math.PI*2); CTX.fill(); CTX.stroke();
+      CTX.fillStyle = "#dfe7f1";
+      CTX.font = `${Math.max(14, Math.floor(RING_W*0.22))}px system-ui,Segoe UI,Roboto`;
+      CTX.textAlign = "center"; CTX.textBaseline = "middle";
+      CTX.fillText(CENTER_ID, CX, CY);
+
+      // интерполяция и рендер секторов
+      targetFlat.forEach(n=>{
+        if (n === TREE) return;
+        const tgt = TARGET_MAP.get(n.id);
+        const prev = PREV_GEOM.get(n.id) || tgt;
+        const geom = {
+          th0: lerp(prev.th0, tgt.th0, t),
+          th1: lerp(prev.th1, tgt.th1, t),
+          r0:  lerp(prev.r0,  tgt.r0,  t),
+          r1:  lerp(prev.r1,  tgt.r1,  t),
+        };
+        // рисуем сектор
+        const sel = SELECTION.has(n.id);
+        CTX.fillStyle = colorFor(n.type, sel);
+        CTX.strokeStyle = "#2a3a50";
+        CTX.lineWidth = 1;
+        arcPath(CTX, CX, CY, geom.r0, geom.r1, geom.th0, geom.th1);
+        CTX.fill(); CTX.stroke();
+
+        // подпись если видно
+        const thMid = (geom.th0 + geom.th1)/2;
+        const rMid = (geom.r0 + geom.r1)/2;
+        const [lx,ly] = polar(CX,CY, rMid, thMid);
+        const visibleAngle = deg(geom.th1 - geom.th0);
+        if(visibleAngle > 8){
+          CTX.save();
+          CTX.translate(lx,ly);
+          CTX.rotate(thMid + Math.PI/2);
+          CTX.fillStyle = "#e7edf5";
+          CTX.font = "12px system-ui,Segoe UI,Roboto";
+          const text = n.name.length>18? n.name.slice(0,17)+"…" : n.name;
+          CTX.textAlign = "center"; CTX.textBaseline = "middle";
+          CTX.fillText(text, 0, 0);
+          CTX.restore();
+        }
+
+        // сохраняем для hit-test текущую геометрию кадра
+        const shadow = {...n, _geom: geom};
+        LAYOUT.push(shadow);
+      });
+
+      if (t < 1) requestAnimationFrame(tick);
+      else { draw(); res(); }
+    };
+    requestAnimationFrame(tick);
+  });
+}
 /* =================== hit-testing =================== */
 function hit(x,y){
   // convert to polar
@@ -354,7 +477,7 @@ CANVAS.addEventListener("mouseleave", ()=>{
 CANVAS.addEventListener("click", async e=>{
   CTXMENU.style.display="none";
   const n = hit(e.offsetX, e.offsetY);
-  if(!n) return;
+  if(!n || (n.id && n.id.startsWith("__agg__"))) return;
   if(e.shiftKey){
     // multi-select toggle
     SELECTION.has(n.id) ? SELECTION.delete(n.id) : SELECTION.add(n.id);
@@ -369,7 +492,7 @@ CANVAS.addEventListener("click", async e=>{
 CANVAS.addEventListener("contextmenu", e=>{
   e.preventDefault();
   const n = hit(e.offsetX, e.offsetY);
-  if(!n){ CTXMENU.style.display="none"; return; }
+  if(!n || (n.id && n.id.startsWith("__agg__"))){ CTXMENU.style.display="none"; return; }
   CTXMENU.style.display = "block";
   CTXMENU.style.left = e.clientX+"px";
   CTXMENU.style.top = e.clientY+"px";
@@ -474,8 +597,17 @@ async function openInfo(id){
 
 /* =================== boot =================== */
 async function rebuildTree(){
-  TREE = buildTree(CENTER_ID);
-  resize(); draw();
+  // сохраняем прошлую геометрию для анимации
+  PREV_GEOM.clear();
+  LAYOUT.forEach(n=>{
+    if (n && n.id && n._geom) PREV_GEOM.set(n.id, {...n._geom});
+  });
+
+  TREE = await buildTree(CENTER_ID);
+  resize();
+
+  // рисуем с анимацией
+  await drawAnimated();
 }
 window.addEventListener("resize", ()=>{ resize(); draw(); });
 
