@@ -16,7 +16,7 @@
   #crumbs { font-size:13px; opacity:.9 }
   #crumbs a { color:#8ab4ff; text-decoration:none; }
   #search { min-width:260px; padding:7px 10px; border-radius:6px; border:1px solid #273446; background:#111823; color:#dfe7f1; }
-  #filters { display:flex; align-items:center; gap:10px; margin-left:auto; font-size:13px; }
+  #topbar .spacer { flex:1; }
 
   /* main */
   #main { display:grid; grid-template-columns: 1fr 360px; height:100%; }
@@ -42,12 +42,8 @@
   <div id="topbar">
     <button class="btn" id="homeBtn">Платформа</button>
     <div id="crumbs"></div>
+    <div class="spacer"></div>
     <input id="search" placeholder="Поиск: сервис / модель / маршрут"/>
-    <div id="filters">
-      <label><input type="checkbox" class="fl" value="frontend" checked/> Frontend</label>
-      <label><input type="checkbox" class="fl" value="backend" checked/> Backend</label>
-      <label><input type="checkbox" class="fl" value="qa" checked/> QA</label>
-    </div>
   </div>
 
   <div id="main">
@@ -87,6 +83,38 @@ function arcPath(ctx, cx, cy, r0, r1, th0, th1){
   ctx.closePath();
 }
 function lerp(a,b,t){ return a + (b-a)*t; }
+const LABEL_FONT_FAMILY = "system-ui,Segoe UI,Roboto";
+function makeLabel(ctx, name, geom){
+  if(!geom) return null;
+  const arc = geom.th1 - geom.th0;
+  if(arc <= 0) return null;
+  const rMid = (geom.r0 + geom.r1) / 2;
+  const arcLength = Math.abs(arc) * rMid;
+  const maxWidth = Math.max(0, arcLength - 10);
+  if(maxWidth <= 0) return null;
+  const prevFont = ctx.font;
+  let result = null;
+  const sizes = [12, 11, 10, 9, 8];
+  for(const size of sizes){
+    ctx.font = `${size}px ${LABEL_FONT_FAMILY}`;
+    if(ctx.measureText(name).width <= maxWidth){
+      result = { text: name, size };
+      break;
+    }
+    let truncated = name;
+    while(truncated.length > 1){
+      truncated = truncated.slice(0, -1);
+      const candidate = truncated + "…";
+      if(ctx.measureText(candidate).width <= maxWidth){
+        result = { text: candidate, size };
+        break;
+      }
+    }
+    if(result) break;
+  }
+  ctx.font = prevFont;
+  return result;
+}
 
 const COLORS = {
   platform: "#1f6feb",
@@ -103,6 +131,9 @@ const DEMO_PLATFORM = {
   description: "Базовая платформа, объединяющая цифровые сервисы. Платформа — фундамент, остальные уровни наследуют от нее общий язык, стандарты и инфраструктуру.",
   principles: [
     "Единая платформа как точка сборки всех сервисов",
+    "Принцип модели данных: все сервисы наследуют каноническую модель платформы",
+    "Принцип REST-запросов: каждый сервис соблюдает платформенные контракты и идемпотентность",
+
     "Сервисы строятся поверх платформенных контрактов",
     "Frontend, Backend и QA для сервиса работают как единая автономная команда"
   ],
@@ -448,7 +479,6 @@ let FULL_GRAPH = null;     // {nodes, edges}
 let TREE = null;           // root {id, name, type, weight, children[]}
 let CENTER_ID = "platform";
 let BREADCRUMBS = [{id:"platform", label: DEMO_PLATFORM.name }];
-let FILTERS = new Set(["frontend","backend","qa"]);
 let HOV = null;            // hovered node
 let SELECTION = new Set(); // shift-select
 let LAYOUT = [];           // list of drawn sectors with geometry for hit-test
@@ -533,7 +563,6 @@ async function buildTree(rootId){
     const service = entity.service;
     const children = [];
     ["frontend","backend","qa"].forEach(category=>{
-      if(!FILTERS.has(category)) return;
       const items = getCategoryItems(service, category);
       if(items.length === 0) return;
       children.push({
@@ -693,7 +722,7 @@ function draw(){
   CTX.beginPath(); CTX.arc(CX,CY, RING_W*0.65, 0, Math.PI*2); CTX.fill(); CTX.stroke();
 
   CTX.fillStyle = "#dfe7f1";
-  CTX.font = `${Math.max(14, Math.floor(RING_W*0.22))}px system-ui,Segoe UI,Roboto`;
+  CTX.font = `${Math.max(14, Math.floor(RING_W*0.22))}px ${LABEL_FONT_FAMILY}`;
   CTX.textAlign = "center";
   CTX.textBaseline = "middle";
   CTX.fillText(getCenterLabel(), CX, CY);
@@ -718,15 +747,17 @@ function draw(){
     const [lx,ly] = polar(CX,CY, rMid, thMid);
     const visibleAngle = deg(n._geom.th1 - n._geom.th0);
     if(visibleAngle > 8){
-      CTX.save();
-      CTX.translate(lx,ly);
-      CTX.rotate(thMid + Math.PI/2);
-      CTX.fillStyle = "#e7edf5";
-      CTX.font = "12px system-ui,Segoe UI,Roboto";
-      const text = n.name.length>18? n.name.slice(0,17)+"…" : n.name;
-      CTX.textAlign = "center"; CTX.textBaseline = "middle";
-      CTX.fillText(text, 0, 0);
-      CTX.restore();
+      const label = makeLabel(CTX, n.name, n._geom);
+      if(label){
+        CTX.save();
+        CTX.translate(lx,ly);
+        CTX.rotate(thMid + Math.PI/2);
+        CTX.fillStyle = "#e7edf5";
+        CTX.font = `${label.size}px ${LABEL_FONT_FAMILY}`;
+        CTX.textAlign = "center"; CTX.textBaseline = "middle";
+        CTX.fillText(label.text, 0, 0);
+        CTX.restore();
+      }
     }
     // keep for hit-test
     LAYOUT.push(n);
@@ -763,7 +794,7 @@ async function drawAnimated(){
       CTX.lineWidth = 2;
       CTX.beginPath(); CTX.arc(CX,CY, RING_W*0.65, 0, Math.PI*2); CTX.fill(); CTX.stroke();
       CTX.fillStyle = "#dfe7f1";
-      CTX.font = `${Math.max(14, Math.floor(RING_W*0.22))}px system-ui,Segoe UI,Roboto`;
+      CTX.font = `${Math.max(14, Math.floor(RING_W*0.22))}px ${LABEL_FONT_FAMILY}`;
       CTX.textAlign = "center"; CTX.textBaseline = "middle";
       CTX.fillText(getCenterLabel(), CX, CY);
 
@@ -792,15 +823,17 @@ async function drawAnimated(){
         const [lx,ly] = polar(CX,CY, rMid, thMid);
         const visibleAngle = deg(geom.th1 - geom.th0);
         if(visibleAngle > 8){
-          CTX.save();
-          CTX.translate(lx,ly);
-          CTX.rotate(thMid + Math.PI/2);
-          CTX.fillStyle = "#e7edf5";
-          CTX.font = "12px system-ui,Segoe UI,Roboto";
-          const text = n.name.length>18? n.name.slice(0,17)+"…" : n.name;
-          CTX.textAlign = "center"; CTX.textBaseline = "middle";
-          CTX.fillText(text, 0, 0);
-          CTX.restore();
+          const label = makeLabel(CTX, n.name, geom);
+          if(label){
+            CTX.save();
+            CTX.translate(lx,ly);
+            CTX.rotate(thMid + Math.PI/2);
+            CTX.fillStyle = "#e7edf5";
+            CTX.font = `${label.size}px ${LABEL_FONT_FAMILY}`;
+            CTX.textAlign = "center"; CTX.textBaseline = "middle";
+            CTX.fillText(label.text, 0, 0);
+            CTX.restore();
+          }
         }
 
         // сохраняем для hit-test текущую геометрию кадра
@@ -916,14 +949,6 @@ function renderCrumbs(){
     };
   });
 }
-
-/* filters */
-document.querySelectorAll(".fl").forEach(ch=>{
-  ch.addEventListener("change", async ()=>{
-    FILTERS = new Set([...document.querySelectorAll(".fl:checked")].map(x=>x.value));
-    await rebuildTree();
-  });
-});
 
 /* search */
 $("#search").addEventListener("input", async (e)=>{
