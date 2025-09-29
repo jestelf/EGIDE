@@ -95,12 +95,10 @@ const COLORS = {
   qa:       "#c77dff",
   other:    "#91a7ff"
 };
-
 // ---- NEW: animation & aggregation tuning ----
 const MIN_ARC_DEG = 6;     // минимальный видимый угол сектора; меньше — уходит в "+N"
 const ANIM_MS = 350;       // длительность анимации дрилл-дауна в мс
 let PREV_GEOM = new Map(); // id -> {th0, th1, r0, r1} из прошлого кадра (для анимации)
-
 /* =================== state =================== */
 let CANVAS, CTX, W, H, CX, CY, RING_W;
 let FULL_GRAPH = null;     // {nodes, edges}
@@ -183,11 +181,14 @@ async function buildTree(rootId){
     adjOut.get(e.from).add(e.to);
     adjIn.get(e.to).add(e.from);
   });
+
+  // BFS outward layers by "is connected (attached) OR depends_on from this root"
   const seen = new Set([rootId]);
   const rootNode = nodes.get(rootId) || {id:rootId,label:rootId,type:"backend"};
   const root = { id:rootNode.id, name:rootNode.label||rootId, type:rootNode.type||"backend", weight:1, children:[] };
 
   function neighbors(id){
+    // direct connections either direction with id
     const outs = [...(adjOut.get(id)||[])];
     const ins  = [...(adjIn.get(id)||[])];
     return Array.from(new Set(outs.concat(ins)));
@@ -228,7 +229,6 @@ function normalizeWeights(children){
   const s = children.reduce((a,c)=>a+(c.weight||1),0) || 1;
   children.forEach(c=> c._w = (c.weight||1)/s);
 }
-
 // ---- NEW: агрегируем слишком маленькие секторы в "+N" ----
 function aggregateSmall(children, totalAngleRad){
   if (!children || children.length === 0) return children;
@@ -264,7 +264,6 @@ function layoutRadial(node, th0, th1, r0, ringW, out){
 
   if(!node.children || node.children.length===0) return;
   normalizeWeights(node.children);
-
   // агрегируем мелкие сектора перед рекурсией
   let kids = node.children.map(c=> ({...c}));
   const totalAngle = (th1 - th0);
@@ -357,7 +356,6 @@ function draw(){
     LAYOUT.push(n);
   });
 }
-
 async function drawAnimated(){
   // готовим новый плоский список (чтобы вычислить целевые геометрии)
   const targetFlat = [];
@@ -440,7 +438,6 @@ async function drawAnimated(){
     requestAnimationFrame(tick);
   });
 }
-
 /* =================== hit-testing =================== */
 function hit(x,y){
   // convert to polar
