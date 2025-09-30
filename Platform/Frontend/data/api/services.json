@@ -1,0 +1,43 @@
+{
+  "items": [
+    {
+      "id": "customer-onboarding",
+      "slug": "customer-onboarding",
+      "name": "Customer Onboarding",
+      "summary": "End-to-end onboarding experience with automated risk assessment.",
+      "status": "production",
+      "owner": "Stream Onboarding",
+      "updatedAt": "2024-03-27T11:15:00Z",
+      "links": {
+        "self": "./services/customer-onboarding/detail.json"
+      },
+      "domains": ["frontend", "backend", "qa"]
+    },
+    {
+      "id": "payments-core",
+      "slug": "payments-core",
+      "name": "Payments Core",
+      "summary": "Payment intake, routing and settlement for merchants.",
+      "status": "production",
+      "owner": "Payments Tribe",
+      "updatedAt": "2024-03-29T08:02:00Z",
+      "links": {
+        "self": "./services/payments-core/detail.json"
+      },
+      "domains": ["frontend", "backend", "qa"]
+    },
+    {
+      "id": "insight-analytics",
+      "slug": "insight-analytics",
+      "name": "Insight Analytics",
+      "summary": "Self-service analytics workspace backed by governed datasets.",
+      "status": "beta",
+      "owner": "Analytics Guild",
+      "updatedAt": "2024-03-21T17:48:00Z",
+      "links": {
+        "self": "./services/insight-analytics/detail.json"
+      },
+      "domains": ["frontend", "backend", "qa"]
+    }
+  ]
+}

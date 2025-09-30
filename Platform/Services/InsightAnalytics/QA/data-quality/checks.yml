@@ -1,0 +1,11 @@
+checks:
+  - name: freshness_sales_daily
+    type: freshness
+    dataset: sales.daily
+    threshold: 10m
+  - name: completeness_marketing_leads
+    type: completeness
+    dataset: marketing.leads
+    columns:
+      - lead_id
+      - email
