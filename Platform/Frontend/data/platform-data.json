@@ -1,0 +1,291 @@
+{
+  "id": "platform",
+  "name": "Платформа EGIDE",
+  "description": "Базовая платформа, объединяющая цифровые сервисы. Платформа — фундамент, остальные уровни наследуют от нее общий язык, стандарты и инфраструктуру.",
+  "principles": [
+    "Единая платформа как точка сборки всех сервисов",
+    "Принцип модели данных: все сервисы наследуют каноническую модель платформы",
+    "Принцип REST-запросов: каждый сервис соблюдает платформенные контракты и идемпотентность",
+    "Сервисы строятся поверх платформенных контрактов",
+    "Frontend, Backend и QA для сервиса работают как единая автономная команда"
+  ],
+  "services": [
+    {
+      "id": "customer-onboarding",
+      "name": "Онбординг клиентов",
+      "summary": "Полный цикл привлечения и верификации клиента от заявки до активации продукта.",
+      "mission": "Сделать старт работы с продуктом прозрачным и полностью самообслуживаемым.",
+      "owner": "Stream Onboarding",
+      "lead": "Ирина Волкова",
+      "status": "production",
+      "impact": "Высокий",
+      "sla": "99.95%",
+      "roadmap": [
+        "Автоматическая переоценка рисков",
+        "Единая витрина тарифов",
+        "Синхронизация статусов с партнёрами"
+      ],
+      "categoryNotes": {
+        "frontend": "Команда UI обеспечивает быстрый отклик и доступность интерфейсов для разных устройств.",
+        "backend": "Микросервисы построены на событиях, обеспечивают непрерывность процессов KYC.",
+        "qa": "QA-группа держит контроль критических пользовательских сценариев и регресса."
+      },
+      "frontend": [
+        {
+          "id": "customer-portal",
+          "name": "Клиентский портал",
+          "description": "Главная точка входа для новых клиентов с трекингом статуса заявки.",
+          "stack": "React, Vite, RTK Query",
+          "status": "prod",
+          "lead": "Дмитрий Мизин",
+          "repo": "ssh://git/internal/customer-portal",
+          "metrics": {
+            "users": "42K MAU",
+            "uptime": "99.9%"
+          }
+        },
+        {
+          "id": "kyc-form",
+          "name": "KYC форма",
+          "description": "Анкета с динамическими шагами, адаптирующимися под сегмент клиента.",
+          "stack": "React Hook Form, Zustand",
+          "status": "prod",
+          "lead": "Анна Савина",
+          "repo": "ssh://git/internal/kyc-form",
+          "metrics": {
+            "conversion": "+18% после A/B"
+          }
+        }
+      ],
+      "backend": [
+        {
+          "id": "workflow-engine",
+          "name": "Workflow Engine",
+          "description": "Оркестрация этапов онбординга, вебхуки и SLA мониторинг.",
+          "stack": "Kotlin, Spring Boot, Kafka",
+          "status": "prod",
+          "lead": "Павел Романов",
+          "repo": "ssh://git/internal/workflow-engine",
+          "metrics": {
+            "throughput": "12K процессов/ч",
+            "latency": "350 мс P95"
+          }
+        },
+        {
+          "id": "risk-evaluator",
+          "name": "Risk Evaluator",
+          "description": "Скоринг рисков и проверка санкционных списков.",
+          "stack": "Python, FastAPI, Redis",
+          "status": "beta",
+          "lead": "Женя Гришин",
+          "repo": "ssh://git/internal/risk-evaluator",
+          "metrics": {
+            "coverage": "98% матчей"
+          }
+        }
+      ],
+      "qa": [
+        {
+          "id": "onboarding-regression",
+          "name": "Регрессия онбординга",
+          "description": "Полный регрессионный сценарий от заявки до активации.",
+          "stack": "Playwright, Allure",
+          "status": "nightly",
+          "lead": "Татьяна Журавлёва",
+          "cadence": "Каждые 4 часа",
+          "coverage": "85% критических путей"
+        },
+        {
+          "id": "api-contract-tests",
+          "name": "Контрактные тесты API",
+          "description": "Проверка соответствия API платформенным схемам.",
+          "stack": "Postman CLI, Newman",
+          "status": "ci",
+          "lead": "Михаил Осипов",
+          "cadence": "При каждом мерже",
+          "coverage": "100% публичных контрактов"
+        }
+      ]
+    },
+    {
+      "id": "payments-core",
+      "name": "Платёжное ядро",
+      "summary": "Приём и маршрутизация платежей во всех каналах.",
+      "mission": "Гарантировать мгновенную и безопасную обработку транзакций.",
+      "owner": "Payments Tribe",
+      "lead": "Максим Лавров",
+      "status": "production",
+      "impact": "Критический",
+      "sla": "99.99%",
+      "roadmap": [
+        "Единый расчётный календарь",
+        "Интеллектуальный ретраинг операций",
+        "Realtime мониторинг отклонений"
+      ],
+      "categoryNotes": {
+        "frontend": "Интерфейсы построены поверх платформенных компонентов и поддерживают white-label.",
+        "backend": "Домены платежей разделены на изолированные bounded context'ы.",
+        "qa": "Используется сет стейджингов и контрактные провайдеры для предотвращения регрессов."
+      },
+      "frontend": [
+        {
+          "id": "merchant-dashboard",
+          "name": "Кабинет мерчанта",
+          "description": "Отображение платежных потоков и управление витринами.",
+          "stack": "Vue 3, Pinia",
+          "status": "prod",
+          "lead": "Сергей Фомин",
+          "repo": "ssh://git/internal/merchant-dashboard",
+          "metrics": {
+            "nps": "54",
+            "sessions": "12K в сутки"
+          }
+        }
+      ],
+      "backend": [
+        {
+          "id": "payment-router",
+          "name": "Payment Router",
+          "description": "Маршрутизация операций по шлюзам и провайдерам.",
+          "stack": "Go, gRPC, Kafka",
+          "status": "prod",
+          "lead": "Влад Колесник",
+          "repo": "ssh://git/internal/payment-router",
+          "metrics": {
+            "latency": "180 мс P95",
+            "volume": "2.1M txn/день"
+          }
+        },
+        {
+          "id": "settlement-service",
+          "name": "Settlement Service",
+          "description": "Расчёты и акты сверок с мерчантами.",
+          "stack": "Java, Quarkus, PostgreSQL",
+          "status": "prod",
+          "lead": "Екатерина Белова",
+          "repo": "ssh://git/internal/settlement-service",
+          "metrics": {
+            "reports": "6K отчётов/день"
+          }
+        }
+      ],
+      "qa": [
+        {
+          "id": "payment-e2e",
+          "name": "E2E платежи",
+          "description": "Сквозные сценарии приёма и возврата платежей.",
+          "stack": "Cypress, TypeScript",
+          "status": "prod",
+          "lead": "Юлия Горина",
+          "cadence": "Каждый час",
+          "coverage": "78% денежных потоков"
+        },
+        {
+          "id": "load-benchmarks",
+          "name": "Нагрузочные бенчмарки",
+          "description": "Профилирование производительности критических операций.",
+          "stack": "Gatling, Grafana",
+          "status": "weekly",
+          "lead": "Алексей Логинов",
+          "cadence": "Раз в неделю",
+          "coverage": "Пиковые сценарии чек-аута"
+        }
+      ]
+    },
+    {
+      "id": "insights-hub",
+      "name": "Insights Hub",
+      "summary": "Единое хранилище аналитики и витрин для продуктовых команд.",
+      "mission": "Доставлять аналитические инсайты в течение минут, а не дней.",
+      "owner": "Data Platform",
+      "lead": "Олег Сафронов",
+      "status": "beta",
+      "impact": "Стратегический",
+      "sla": "99.5%",
+      "roadmap": [
+        "Self-service построение витрин",
+        "ML-пайплайны с автоматическим деплоем",
+        "Каталогирование показателей"
+      ],
+      "categoryNotes": {
+        "frontend": "Витрины и конструкторы отчётов работают поверх design-system платформы.",
+        "backend": "Дата-канал построен на потоковой обработке и lakehouse-подходе.",
+        "qa": "QA команда поддерживает доверие к данным через автоматические проверки качества."
+      },
+      "frontend": [
+        {
+          "id": "analytics-workbench",
+          "name": "Analytics Workbench",
+          "description": "Конструктор отчётов и визуализаций для продуктовых менеджеров.",
+          "stack": "React, Recharts",
+          "status": "beta",
+          "lead": "Алина Рябова",
+          "repo": "ssh://git/internal/analytics-workbench",
+          "metrics": {
+            "adoption": "15 команд"
+          }
+        },
+        {
+          "id": "metrics-catalog",
+          "name": "Каталог метрик",
+          "description": "Единое место для описаний KPI и метрик.",
+          "stack": "Next.js, Chakra UI",
+          "status": "beta",
+          "lead": "Никита Круглов",
+          "repo": "ssh://git/internal/metrics-catalog",
+          "metrics": {
+            "entries": "320 описаний"
+          }
+        }
+      ],
+      "backend": [
+        {
+          "id": "event-hub",
+          "name": "Event Hub",
+          "description": "Сбор и маршрутизация событий продукта.",
+          "stack": "Scala, Akka Streams, ClickHouse",
+          "status": "prod",
+          "lead": "Игорь Щербаков",
+          "repo": "ssh://git/internal/event-hub",
+          "metrics": {
+            "ingestion": "8 млрд событий/сутки"
+          }
+        },
+        {
+          "id": "ml-pipeline",
+          "name": "ML Pipeline",
+          "description": "Платформа обучения и выката моделей.",
+          "stack": "Python, Airflow, MLflow",
+          "status": "beta",
+          "lead": "Лидия Бахметьева",
+          "repo": "ssh://git/internal/ml-pipeline",
+          "metrics": {
+            "models": "24 активных"
+          }
+        }
+      ],
+      "qa": [
+        {
+          "id": "data-quality",
+          "name": "Data Quality",
+          "description": "Автоматические проверки качества данных и алерты.",
+          "stack": "Great Expectations, DBT",
+          "status": "ci",
+          "lead": "Глеб Назаров",
+          "cadence": "При каждой поставке",
+          "coverage": "112 витрин"
+        },
+        {
+          "id": "schema-guardian",
+          "name": "Schema Guardian",
+          "description": "Контроль схем событий и обратная совместимость.",
+          "stack": "OpenAPI Diff, Kafka TestKit",
+          "status": "prod",
+          "lead": "Елена Афанасьева",
+          "cadence": "На каждый релиз",
+          "coverage": "58 контрактов"
+        }
+      ]
+    }
+  ]
+}

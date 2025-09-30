@@ -7,7 +7,7 @@
 <style>
   :root { color-scheme: dark; }
   html,body { height:100%; }
-  body { margin:0; font-family: system-ui, Segoe UI, Roboto, Arial, sans-serif; background:#0b0d10; color:#e7edf5; display:grid; grid-template-rows:auto 1fr auto; }
+  body { margin:0; font-family: system-ui, Segoe UI, Roboto, Arial, sans-serif; background:#0b0d10; color:#e7edf5; display:grid; grid-template-rows:auto 1fr auto; overflow:hidden; }
 
   /* top bar */
   #topbar { display:flex; align-items:center; gap:12px; padding:10px 14px; border-bottom:1px solid #1c2430; background:#0f141b; }
@@ -19,16 +19,36 @@
   #topbar .spacer { flex:1; }
 
   /* main */
-  #main { display:grid; grid-template-columns: 1fr 360px; height:100%; }
-  #canvasWrap { position:relative; }
+  #main { display:grid; grid-template-columns: 360px 1fr; height:100%; min-height:0; }
+  #canvasWrap { position:relative; overflow:hidden; }
   #sun { width:100%; height:100%; display:block; background: radial-gradient(ellipse at center, #0e141c 0%, #0b0d10 60%); }
   #tooltip { position:fixed; pointer-events:none; background:#101826; border:1px solid #2b415c; border-radius:6px; padding:8px 10px; font-size:12px; display:none; z-index:10; }
-  #panel { border-left:1px solid #1c2430; background:#0f141b; padding:12px; overflow:auto; }
-  #panel h3, #panel h4 { margin:8px 0; }
+  #panel { border-right:1px solid #1c2430; background:#0f141b; padding:12px; overflow:auto; display:flex; flex-direction:column; gap:12px; }
+  #panel h3, #panel h4 { margin:0; }
   .kv { display:grid; grid-template-columns: 120px 1fr; gap:6px 10px; font-size:13px; }
   code { background:#15202b; padding:2px 4px; border-radius:4px; }
   ul.slim { margin:6px 0 0 18px; padding:0; }
   ul.slim li { margin:2px 0; }
+  .panel-header { display:flex; flex-direction:column; gap:6px; }
+  #saveStatus { font-size:12px; color:#8da3c1; }
+  #info { flex:1; overflow:auto; display:flex; flex-direction:column; gap:12px; padding-right:6px; }
+  .form-section { background:#111a28; border:1px solid #1f2a38; border-radius:8px; padding:10px; display:flex; flex-direction:column; gap:10px; }
+  .form-section > h4 { margin:0; font-size:14px; }
+  .form-field { display:flex; flex-direction:column; gap:6px; }
+  .form-field label { font-size:11px; letter-spacing:.05em; text-transform:uppercase; opacity:.7; }
+  .form-field input,
+  .form-field textarea { width:100%; background:#0b121d; border:1px solid #243244; border-radius:6px; padding:6px 8px; color:#e7edf5; font:inherit; }
+  .form-field textarea { resize:vertical; min-height:72px; }
+  .list-items { display:flex; flex-direction:column; gap:8px; }
+  .list-item { background:#0c141f; border:1px solid #1d2a3a; border-radius:6px; padding:8px; display:flex; flex-direction:column; gap:8px; }
+  .list-item-header { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:13px; }
+  .tag { padding:2px 6px; border-radius:999px; background:#1d2e44; color:#a4bedf; font-size:11px; letter-spacing:.05em; text-transform:uppercase; }
+  .panel-actions { display:flex; gap:8px; flex-wrap:wrap; }
+  .btn-secondary { border:1px solid #2a394c; background:#162031; color:#dfe7f1; padding:6px 10px; border-radius:6px; cursor:pointer; font:inherit; }
+  .btn-secondary:hover { background:#1f2d44; }
+  .danger-btn { color:#ff8787; border-color:#4a1f27; background:#2a0f15; }
+  .danger-btn:hover { background:#3a151d; }
+  .inline-actions { display:flex; gap:6px; }
 
   /* context menu */
   #ctx { position:fixed; display:none; z-index:20; background:#101826; border:1px solid #2b415c; border-radius:6px; overflow:hidden; min-width:220px; }
@@ -47,6 +67,18 @@
   </div>
 
   <div id="main">
+    <aside id="panel">
+      <div class="panel-header">
+        <h3>Редактор данных</h3>
+        <div id="saveStatus">Изменений нет</div>
+      </div>
+      <div id="info">Выберите элемент на диаграмме, чтобы редактировать связанные данные.</div>
+      <div class="panel-actions">
+        <button class="btn-secondary" id="importBtn">Загрузить файл…</button>
+        <input type="file" id="dataFile" accept="application/json" hidden>
+        <button class="btn-secondary" id="saveBtn" disabled>Сохранить в файл</button>
+      </div>
+    </aside>
     <div id="canvasWrap">
       <canvas id="sun"></canvas>
       <div id="tooltip"></div>
@@ -57,10 +89,6 @@
         <button data-act="center">Сделать центром</button>
       </div>
     </div>
-    <aside id="panel">
-      <h3>Информация</h3>
-      <div id="info">Клик по сектору — дрилл-даун. Shift+клик — мультивыделение. ПКМ — контекст-меню.</div>
-    </aside>
   </div>
 
   <footer>Sunburst map · drill-down · фильтры · поиск · контекстные действия</footer>
@@ -125,7 +153,125 @@ const COLORS = {
   other:    "#91a7ff"
 };
 const CATEGORY_LABELS = { frontend: "Frontend", backend: "Backend", qa: "QA" };
-const DEMO_PLATFORM = {
+
+let PLATFORM_DATA = null;
+let UNSAVED_CHANGES = false;
+let rebuildTimer = null;
+const REBUILD_DEBOUNCE_MS = 600;
+
+function deepClone(obj){
+  return JSON.parse(JSON.stringify(obj));
+}
+function ensureArray(value){
+  return Array.isArray(value) ? value.slice() : [];
+}
+function sanitizeStringArray(arr){
+  return ensureArray(arr).map(item => String(item ?? ""));
+}
+function sanitizeMetrics(metrics){
+  const result = {};
+  if(metrics && typeof metrics === "object"){
+    Object.entries(metrics).forEach(([key, value])=>{
+      const k = String(key ?? "");
+      if(!k) return;
+      result[k] = String(value ?? "");
+    });
+  }
+  return result;
+}
+function generateId(prefix){
+  return `${prefix}-${Math.random().toString(36).slice(2,8)}`;
+}
+function sanitizeComponent(component = {}){
+  const comp = { ...deepClone(component || {}) };
+  comp.id = comp.id || generateId("cmp");
+  comp.name = comp.name || "";
+  comp.description = comp.description || "";
+  comp.stack = comp.stack || "";
+  comp.status = comp.status || "";
+  comp.lead = comp.lead || "";
+  comp.repo = comp.repo || "";
+  comp.cadence = comp.cadence || "";
+  comp.coverage = comp.coverage || "";
+  comp.metrics = sanitizeMetrics(comp.metrics);
+  if(comp.weight === undefined) comp.weight = 1;
+  return comp;
+}
+function sanitizeComponentList(list){
+  return ensureArray(list).map(item => sanitizeComponent(item));
+}
+function sanitizeService(service = {}){
+  const src = { ...deepClone(service || {}) };
+  src.id = src.id || generateId("service");
+  src.name = src.name || "";
+  src.summary = src.summary || "";
+  src.mission = src.mission || "";
+  src.owner = src.owner || "";
+  src.lead = src.lead || "";
+  src.status = src.status || "";
+  src.impact = src.impact || "";
+  src.sla = src.sla || "";
+  src.roadmap = sanitizeStringArray(src.roadmap);
+  src.frontend = sanitizeComponentList(src.frontend);
+  src.backend = sanitizeComponentList(src.backend);
+  src.qa = sanitizeComponentList(src.qa);
+  src.categoryNotes = Object.assign({ frontend:"", backend:"", qa:"" }, src.categoryNotes || {});
+  return src;
+}
+function sanitizePlatformData(raw = {}){
+  const platform = deepClone(raw || {});
+  platform.id = platform.id || "platform";
+  const fallbackName = DEFAULT_PLATFORM_DATA.name || "Платформа";
+  platform.name = platform.name || fallbackName;
+  platform.description = platform.description || "";
+  platform.principles = sanitizeStringArray(platform.principles);
+  platform.services = ensureArray(platform.services).map(sanitizeService);
+  return platform;
+}
+function getPlatform(){
+  return PLATFORM_DATA || DEFAULT_PLATFORM_DATA;
+}
+function updateSaveStatus(){
+  const status = $("#saveStatus");
+  const btn = $("#saveBtn");
+  if(status){
+    status.textContent = UNSAVED_CHANGES ? "Есть несохранённые изменения" : "Изменений нет";
+  }
+  if(btn){
+    btn.disabled = !UNSAVED_CHANGES;
+  }
+}
+function markClean(){
+  UNSAVED_CHANGES = false;
+  updateSaveStatus();
+  if(PLATFORM_DATA){
+    savePlatformDataToLocal();
+  }
+}
+function markDirty({ rebuild = true } = {}){
+  UNSAVED_CHANGES = true;
+  updateSaveStatus();
+  if(PLATFORM_DATA){
+    savePlatformDataToLocal();
+  }
+  if(rebuild) requestRebuild();
+}
+function requestRebuild(){
+  if(rebuildTimer){
+    clearTimeout(rebuildTimer);
+  }
+  rebuildTimer = setTimeout(()=>{
+    rebuildTree().catch(()=>{});
+  }, REBUILD_DEBOUNCE_MS);
+}
+function centerOn(id){
+  CENTER_ID = id;
+  rebuildTree().then(()=>openInfo(id));
+}
+function rerenderInfo(){
+  openInfo(CENTER_ID);
+}
+const DEFAULT_PLATFORM_DATA = {
   id: "platform",
   name: "Платформа EGIDE",
   description: "Базовая платформа, объединяющая цифровые сервисы. Платформа — фундамент, остальные уровни наследуют от нее общий язык, стандарты и инфраструктуру.",
@@ -397,7 +543,9 @@ const ANIM_MS = 350;       // длительность анимации дрил
 let PREV_GEOM = new Map(); // id -> {th0, th1, r0, r1} из прошлого кадра (для анимации)
 
 function findServiceById(id){
-  return DEMO_PLATFORM.services.find(s=>s.id===id);
+  const platform = getPlatform();
+  if(!platform || !platform.services) return null;
+  return platform.services.find(s=>s.id===id);
 }
 function getCategoryItems(service, category){
   if(!service) return [];
@@ -406,7 +554,8 @@ function getCategoryItems(service, category){
 function getEntity(id){
   if(!id) return getEntity("platform");
   if(id === "platform"){
-    return { kind: "platform", id: "platform", title: DEMO_PLATFORM.name };
+    const platform = getPlatform();
+    return { kind: "platform", id: "platform", title: platform ? platform.name : "Платформа" };
   }
   const parts = id.split(":");
   const service = findServiceById(parts[0]);
@@ -448,7 +597,10 @@ function getEntity(id){
 function getCenterLabel(){
   const entity = getEntity(CENTER_ID);
   if(!entity) return CENTER_ID;
-  if(entity.kind === "platform") return DEMO_PLATFORM.name;
+  if(entity.kind === "platform"){
+    const platform = getPlatform();
+    return platform ? platform.name : CENTER_ID;
+  }
   if(entity.kind === "service") return entity.service.name;
   if(entity.kind === "category") return CATEGORY_LABELS[entity.category];
   if(entity.kind === "component") return entity.component.name;
@@ -456,7 +608,8 @@ function getCenterLabel(){
 }
 function computeBreadcrumbs(id){
   const entity = getEntity(id) || getEntity("platform");
-  const crumbs = [{ id: "platform", label: DEMO_PLATFORM.name }];
+  const platform = getPlatform();
+  const crumbs = [{ id: "platform", label: platform ? platform.name : "Платформа" }];
   if(!entity || entity.kind === "platform"){
     return crumbs;
   }
@@ -478,7 +631,7 @@ let CANVAS, CTX, W, H, CX, CY, RING_W;
 let FULL_GRAPH = null;     // {nodes, edges}
 let TREE = null;           // root {id, name, type, weight, children[]}
 let CENTER_ID = "platform";
-let BREADCRUMBS = [{id:"platform", label: DEMO_PLATFORM.name }];
+let BREADCRUMBS = [];
 let HOV = null;            // hovered node
 let SELECTION = new Set(); // shift-select
 let LAYOUT = [];           // list of drawn sectors with geometry for hit-test
@@ -521,6 +674,63 @@ async function loadGraph(){
   };
 }
 
+const LOCAL_STORAGE_KEY = 'egide-platform-data';
+function loadPlatformDataFromLocal(){
+  try{
+    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if(raw){
+      return sanitizePlatformData(JSON.parse(raw));
+    }
+  }catch(e){}
+  return null;
+}
+function savePlatformDataToLocal(){
+  try{
+    if(PLATFORM_DATA){
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(PLATFORM_DATA));
+    }
+  }catch(e){}
+}
+async function fetchPlatformData(){
+  try{
+    const resp = await fetch('./data/platform-data.json', { cache: 'no-store' });
+    if(resp.ok){
+      const json = await resp.json();
+      return sanitizePlatformData(json);
+    }
+  }catch(e){}
+  return sanitizePlatformData(DEFAULT_PLATFORM_DATA);
+}
+async function loadPlatformData(){
+  const local = loadPlatformDataFromLocal();
+  if(local) return local;
+  return await fetchPlatformData();
+}
+function downloadCurrentPlatformData(){
+  if(!PLATFORM_DATA) return;
+  const blob = new Blob([JSON.stringify(PLATFORM_DATA, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'platform-data.json';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+async function applyPlatformData(data, { clean = true } = {}){
+  PLATFORM_DATA = sanitizePlatformData(data);
+  CENTER_ID = 'platform';
+  await rebuildTree();
+  await openInfo('platform');
+  if(clean){
+    markClean();
+  }else{
+    updateSaveStatus();
+    savePlatformDataToLocal();
+  }
+}
+
 /* =================== tree building =================== */
 function assignWeights(node){
   if(!node.children || node.children.length === 0){
@@ -536,22 +746,24 @@ function assignWeights(node){
 }
 
 async function buildTree(rootId){
+  const platform = getPlatform();
   const entity = getEntity(rootId) || getEntity("platform");
-  if(!entity){
-    return assignWeights({ id: "platform", name: DEMO_PLATFORM.name, type: "platform", weight: 1, children: [] });
+  if(!entity || !platform){
+    return assignWeights({ id: "platform", name: platform ? platform.name : "Платформа", type: "platform", weight: 1, children: [] });
   }
 
   if(entity.kind === "platform"){
+    const services = ensureArray(platform.services);
     const root = {
       id: "platform",
-      name: DEMO_PLATFORM.name,
+      name: platform.name,
       type: "platform",
       weight: 1,
-      children: DEMO_PLATFORM.services.map(service=>({
+      children: services.map(service=>({
         id: service.id,
         name: service.name,
         type: "service",
-        weight: Math.max(1, (service.frontend.length + service.backend.length + service.qa.length) || 1),
+        weight: Math.max(1, (ensureArray(service.frontend).length + ensureArray(service.backend).length + ensureArray(service.qa).length) || 1),
         children: []
       }))
     };
@@ -591,9 +803,7 @@ async function buildTree(rootId){
   }
 
   if(entity.kind === "category"){
-    const service = entity.service;
-    const category = entity.category;
-    const items = entity.items;
+    const { service, category, items } = entity;
     const root = {
       id: `${service.id}:${category}`,
       name: `${CATEGORY_LABELS[category]}`,
@@ -612,9 +822,7 @@ async function buildTree(rootId){
   }
 
   if(entity.kind === "component"){
-    const service = entity.service;
-    const category = entity.category;
-    const comp = entity.component;
+    const { service, category, component: comp } = entity;
     const root = {
       id: `${service.id}:${category}:${comp.id}`,
       name: comp.name,
@@ -626,7 +834,7 @@ async function buildTree(rootId){
     return root;
   }
 
-  return assignWeights({ id: "platform", name: DEMO_PLATFORM.name, type: "platform", weight: 1, children: [] });
+  return assignWeights({ id: "platform", name: platform ? platform.name : "Платформа", type: "platform", weight: 1, children: [] });
 }
 
 /* =================== layout =================== */
@@ -956,6 +1164,33 @@ $("#search").addEventListener("input", async (e)=>{
   draw(); // lightweight: highlight matches as selection
 });
 
+const saveBtn = $("#saveBtn");
+const importBtn = $("#importBtn");
+const dataFileInput = $("#dataFile");
+if(saveBtn){
+  saveBtn.addEventListener("click", ()=>{
+    downloadCurrentPlatformData();
+    markClean();
+  });
+}
+if(importBtn && dataFileInput){
+  importBtn.addEventListener("click", ()=>{
+    dataFileInput.value = "";
+    dataFileInput.click();
+  });
+  dataFileInput.addEventListener("change", async event=>{
+    const file = event.target.files && event.target.files[0];
+    if(!file) return;
+    try{
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      await applyPlatformData(parsed);
+    }catch(err){
+      alert("Не удалось загрузить данные из файла.");
+    }
+  });
+}
+
 /* selection highlight in draw() by name substring */
 const _drawOrig = draw;
 draw = function(){
@@ -975,110 +1210,435 @@ draw = function(){
 }
 
 /* =================== info panel =================== */
+function createButton(text, className, onClick){
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.textContent = text;
+  btn.className = className;
+  btn.addEventListener('click', onClick);
+  return btn;
+}
+function createFormSection(title){
+  const section = document.createElement('section');
+  section.className = 'form-section';
+  if(title){
+    const heading = document.createElement('h4');
+    heading.textContent = title;
+    section.appendChild(heading);
+  }
+  return section;
+}
+function createInputField(label, value, options = {}){
+  const { multiline = false, placeholder = '', type = 'text', rebuild = true, onInput, onAfterInput } = options;
+  const wrapper = document.createElement('div');
+  wrapper.className = 'form-field';
+  const lab = document.createElement('label');
+  lab.textContent = label;
+  wrapper.appendChild(lab);
+  const input = multiline ? document.createElement('textarea') : document.createElement('input');
+  if(!multiline) input.type = type;
+  input.value = value ?? '';
+  if(placeholder) input.placeholder = placeholder;
+  input.addEventListener('input', ev => {
+    const val = ev.target.value;
+    if(onInput) onInput(val);
+    markDirty({ rebuild });
+    if(onAfterInput) onAfterInput(val, input);
+  });
+  wrapper.appendChild(input);
+  return { wrapper, input };
+}
+function createPlaceholder(text){
+  const div = document.createElement('div');
+  div.style.opacity = '.7';
+  div.style.fontSize = '12px';
+  div.textContent = text;
+  return div;
+}
+function createStringListSection(title, list){
+  const section = createFormSection(title);
+  const items = document.createElement('div');
+  items.className = 'list-items';
+  if(!list.length){
+    items.appendChild(createPlaceholder('Пока нет записей'));
+  }
+  list.forEach((value, index)=>{
+    const item = document.createElement('div');
+    item.className = 'list-item';
+    const header = document.createElement('div');
+    header.className = 'list-item-header';
+    const titleEl = document.createElement('strong');
+    titleEl.textContent = `Элемент ${index+1}`;
+    header.appendChild(titleEl);
+    const removeBtn = createButton('Удалить', 'btn-secondary danger-btn', ()=>{
+      list.splice(index,1);
+      markDirty({ rebuild: false });
+      rerenderInfo();
+    });
+    header.appendChild(removeBtn);
+    item.appendChild(header);
+    const field = createInputField('Текст', value, {
+      multiline:true,
+      rebuild:false,
+      onInput: val => { list[index] = val; }
+    });
+    item.appendChild(field.wrapper);
+    items.appendChild(item);
+  });
+  section.appendChild(items);
+  const addBtn = createButton('Добавить пункт', 'btn-secondary', ()=>{
+    list.push('');
+    markDirty({ rebuild: false });
+    rerenderInfo();
+  });
+  section.appendChild(addBtn);
+  return section;
+}
+function createMetricsField(component){
+  if(!component.metrics || typeof component.metrics !== 'object'){
+    component.metrics = {};
+  }
+  const metrics = component.metrics;
+  const container = document.createElement('div');
+  container.className = 'form-field';
+  const label = document.createElement('label');
+  label.textContent = 'Метрики';
+  container.appendChild(label);
+  const list = document.createElement('div');
+  list.className = 'list-items';
+  const entries = Object.entries(metrics);
+  if(entries.length === 0){
+    list.appendChild(createPlaceholder('Метрик пока нет'));
+  }
+  entries.forEach(([key,value], index)=>{
+    let currentKey = key;
+    const item = document.createElement('div');
+    item.className = 'list-item';
+    const header = document.createElement('div');
+    header.className = 'list-item-header';
+    const titleEl = document.createElement('strong');
+    titleEl.textContent = currentKey || `Метрика ${index+1}`;
+    header.appendChild(titleEl);
+    const removeBtn = createButton('Удалить', 'btn-secondary danger-btn', ()=>{
+      delete metrics[currentKey];
+      markDirty({ rebuild:false });
+      rerenderInfo();
+    });
+    header.appendChild(removeBtn);
+    item.appendChild(header);
+    const keyField = createInputField('Ключ', currentKey, {
+      rebuild:false,
+      onInput: newKey => {
+        if(newKey === currentKey) return;
+        const stored = metrics[currentKey];
+        delete metrics[currentKey];
+        currentKey = newKey;
+        metrics[currentKey] = stored;
+      },
+      onAfterInput: newKey => {
+        titleEl.textContent = newKey || `Метрика ${index+1}`;
+      }
+    });
+    item.appendChild(keyField.wrapper);
+    const valueField = createInputField('Значение', value, {
+      rebuild:false,
+      onInput: newValue => {
+        metrics[currentKey] = newValue;
+      }
+    });
+    item.appendChild(valueField.wrapper);
+    list.appendChild(item);
+  });
+  container.appendChild(list);
+  const addBtn = createButton('Добавить метрику', 'btn-secondary', ()=>{
+    let baseKey = `metric-${Object.keys(metrics).length + 1}`;
+    while(metrics[baseKey] !== undefined){
+      baseKey = `metric-${Math.random().toString(36).slice(2,6)}`;
+    }
+    metrics[baseKey] = '';
+    markDirty({ rebuild:false });
+    rerenderInfo();
+  });
+  container.appendChild(addBtn);
+  return container;
+}
+function createComponentListSection(service, category){
+  if(!Array.isArray(service[category])){
+    service[category] = [];
+  }
+  const items = service[category];
+  const section = createFormSection(`${CATEGORY_LABELS[category]}`);
+  const list = document.createElement('div');
+  list.className = 'list-items';
+  if(items.length === 0){
+    list.appendChild(createPlaceholder('Компоненты ещё не добавлены'));
+  }
+  items.forEach((component, index)=>{
+    const item = document.createElement('div');
+    item.className = 'list-item';
+    const header = document.createElement('div');
+    header.className = 'list-item-header';
+    const titleEl = document.createElement('strong');
+    titleEl.textContent = component.name || `Элемент ${index+1}`;
+    header.appendChild(titleEl);
+    const actions = document.createElement('div');
+    actions.className = 'inline-actions';
+    actions.appendChild(createButton('Открыть', 'btn-secondary', ()=>{
+      centerOn(`${service.id}:${category}:${component.id}`);
+    }));
+    actions.appendChild(createButton('Удалить', 'btn-secondary danger-btn', ()=>{
+      const targetId = `${service.id}:${category}:${component.id}`;
+      items.splice(index,1);
+      markDirty();
+      if(CENTER_ID === targetId){
+        centerOn(service.id);
+      }else{
+        rerenderInfo();
+        rebuildTree();
+      }
+    }));
+    header.appendChild(actions);
+    item.appendChild(header);
+    item.appendChild(createInputField('Название', component.name, {
+      rebuild:true,
+      onInput: val => { component.name = val; },
+      onAfterInput: val => { titleEl.textContent = val || `Элемент ${index+1}`; }
+    }).wrapper);
+    item.appendChild(createInputField('Описание', component.description, {
+      multiline:true,
+      rebuild:false,
+      onInput: val => { component.description = val; }
+    }).wrapper);
+    item.appendChild(createInputField('Стек', component.stack, {
+      rebuild:false,
+      onInput: val => { component.stack = val; }
+    }).wrapper);
+    item.appendChild(createInputField('Статус', component.status, {
+      rebuild:false,
+      onInput: val => { component.status = val; }
+    }).wrapper);
+    item.appendChild(createInputField('Лид', component.lead, {
+      rebuild:false,
+      onInput: val => { component.lead = val; }
+    }).wrapper);
+    item.appendChild(createInputField('Репозиторий', component.repo, {
+      rebuild:false,
+      onInput: val => { component.repo = val; }
+    }).wrapper);
+    item.appendChild(createInputField('Частота', component.cadence, {
+      rebuild:false,
+      onInput: val => { component.cadence = val; }
+    }).wrapper);
+    item.appendChild(createInputField('Покрытие', component.coverage, {
+      rebuild:false,
+      onInput: val => { component.coverage = val; }
+    }).wrapper);
+    item.appendChild(createMetricsField(component));
+    list.appendChild(item);
+  });
+  section.appendChild(list);
+  section.appendChild(createButton(`Добавить ${CATEGORY_LABELS[category]}`, 'btn-secondary', ()=>{
+    const newComponent = sanitizeComponent({ id: generateId(category) });
+    items.push(newComponent);
+    markDirty();
+    rerenderInfo();
+    rebuildTree();
+  }));
+  return section;
+}
+function renderPlatformEditor(container, platform){
+  const general = createFormSection('Общие сведения');
+  general.appendChild(createInputField('Название', platform.name, {
+    rebuild:true,
+    onInput: val => { platform.name = val; }
+  }).wrapper);
+  general.appendChild(createInputField('Описание', platform.description, {
+    multiline:true,
+    rebuild:false,
+    onInput: val => { platform.description = val; }
+  }).wrapper);
+  container.appendChild(general);
+  container.appendChild(createStringListSection('Принципы платформы', platform.principles));
+  const servicesSection = createFormSection('Сервисы');
+  const list = document.createElement('div');
+  list.className = 'list-items';
+  if(platform.services.length === 0){
+    list.appendChild(createPlaceholder('Сервисы ещё не добавлены'));
+  }
+  platform.services.forEach((service, index)=>{
+    const item = document.createElement('div');
+    item.className = 'list-item';
+    const header = document.createElement('div');
+    header.className = 'list-item-header';
+    const titleEl = document.createElement('strong');
+    titleEl.textContent = service.name || `Сервис ${index+1}`;
+    header.appendChild(titleEl);
+    const actions = document.createElement('div');
+    actions.className = 'inline-actions';
+    actions.appendChild(createButton('Открыть', 'btn-secondary', ()=>{ centerOn(service.id); }));
+    actions.appendChild(createButton('Удалить', 'btn-secondary danger-btn', ()=>{
+      const platform = getPlatform();
+      const idx = platform.services.findIndex(s=>s.id===service.id);
+      if(idx >= 0){
+        platform.services.splice(idx,1);
+        markDirty();
+        if(CENTER_ID === service.id || CENTER_ID.startsWith(`${service.id}:`)){
+          centerOn('platform');
+        }else{
+          rerenderInfo();
+          rebuildTree();
+        }
+      }
+    }));
+    header.appendChild(actions);
+    item.appendChild(header);
+    item.appendChild(createInputField('Название', service.name, {
+      rebuild:true,
+      onInput: val => { service.name = val; },
+      onAfterInput: val => { titleEl.textContent = val || `Сервис ${index+1}`; }
+    }).wrapper);
+    item.appendChild(createInputField('Краткое описание', service.summary, {
+      multiline:true,
+      rebuild:false,
+      onInput: val => { service.summary = val; }
+    }).wrapper);
+    list.appendChild(item);
+  });
+  servicesSection.appendChild(list);
+  servicesSection.appendChild(createButton('Добавить сервис', 'btn-secondary', ()=>{
+    const platform = getPlatform();
+    const newService = sanitizeService({ name: 'Новый сервис', summary: '' });
+    platform.services.push(newService);
+    markDirty();
+    centerOn(newService.id);
+  }));
+  container.appendChild(servicesSection);
+}
+function renderServiceEditor(container, service){
+  const general = createFormSection('Общие сведения');
+  general.appendChild(createInputField('Название', service.name, {
+    rebuild:true,
+    onInput: val => { service.name = val; }
+  }).wrapper);
+  general.appendChild(createInputField('Краткое описание', service.summary, {
+    multiline:true,
+    rebuild:false,
+    onInput: val => { service.summary = val; }
+  }).wrapper);
+  general.appendChild(createInputField('Миссия', service.mission, {
+    multiline:true,
+    rebuild:false,
+    onInput: val => { service.mission = val; }
+  }).wrapper);
+  general.appendChild(createInputField('Статус', service.status, {
+    rebuild:false,
+    onInput: val => { service.status = val; }
+  }).wrapper);
+  general.appendChild(createInputField('SLA', service.sla, {
+    rebuild:false,
+    onInput: val => { service.sla = val; }
+  }).wrapper);
+  general.appendChild(createInputField('Импакт', service.impact, {
+    rebuild:false,
+    onInput: val => { service.impact = val; }
+  }).wrapper);
+  general.appendChild(createInputField('Владелец', service.owner, {
+    rebuild:false,
+    onInput: val => { service.owner = val; }
+  }).wrapper);
+  general.appendChild(createInputField('Лид', service.lead, {
+    rebuild:false,
+    onInput: val => { service.lead = val; }
+  }).wrapper);
+  container.appendChild(general);
+  container.appendChild(createStringListSection('Роадмап', service.roadmap));
+  const notes = createFormSection('Заметки по направлениям');
+  ['frontend','backend','qa'].forEach(cat => {
+    notes.appendChild(createInputField(CATEGORY_LABELS[cat], service.categoryNotes[cat] || '', {
+      multiline:true,
+      rebuild:false,
+      onInput: val => { service.categoryNotes[cat] = val; }
+    }).wrapper);
+  });
+  container.appendChild(notes);
+  ['frontend','backend','qa'].forEach(cat => {
+    container.appendChild(createComponentListSection(service, cat));
+  });
+}
+function renderCategoryEditor(container, entity){
+  const { service, category } = entity;
+  const note = createFormSection('Комментарий по направлению');
+  note.appendChild(createInputField('Описание', service.categoryNotes[category] || '', {
+    multiline:true,
+    rebuild:false,
+    onInput: val => { service.categoryNotes[category] = val; }
+  }).wrapper);
+  container.appendChild(note);
+  container.appendChild(createComponentListSection(service, category));
+}
+function renderComponentEditor(container, entity){
+  const { component } = entity;
+  const general = createFormSection('Компонент');
+  general.appendChild(createInputField('Название', component.name, {
+    rebuild:true,
+    onInput: val => { component.name = val; }
+  }).wrapper);
+  general.appendChild(createInputField('Описание', component.description, {
+    multiline:true,
+    rebuild:false,
+    onInput: val => { component.description = val; }
+  }).wrapper);
+  general.appendChild(createInputField('Стек', component.stack, {
+    rebuild:false,
+    onInput: val => { component.stack = val; }
+  }).wrapper);
+  general.appendChild(createInputField('Статус', component.status, {
+    rebuild:false,
+    onInput: val => { component.status = val; }
+  }).wrapper);
+  general.appendChild(createInputField('Лид', component.lead, {
+    rebuild:false,
+    onInput: val => { component.lead = val; }
+  }).wrapper);
+  general.appendChild(createInputField('Репозиторий', component.repo, {
+    rebuild:false,
+    onInput: val => { component.repo = val; }
+  }).wrapper);
+  general.appendChild(createInputField('Частота', component.cadence, {
+    rebuild:false,
+    onInput: val => { component.cadence = val; }
+  }).wrapper);
+  general.appendChild(createInputField('Покрытие', component.coverage, {
+    rebuild:false,
+    onInput: val => { component.coverage = val; }
+  }).wrapper);
+  general.appendChild(createMetricsField(component));
+  container.appendChild(general);
+}
 async function openInfo(id){
   const box = $("#info");
+  if(!box) return;
+  box.innerHTML = '';
   const entity = getEntity(id) || getEntity("platform");
-  if(!entity){
+  const platform = getPlatform();
+  if(!entity || !platform){
     box.textContent = "Нет данных для выбранного элемента.";
     renderCrumbs(); draw();
     return;
   }
 
   if(entity.kind === "platform"){
-    const principles = DEMO_PLATFORM.principles.map(p=>`<li>${escapeHtml(p)}</li>`).join("");
-    const services = DEMO_PLATFORM.services.map(s=>`<li><b>${escapeHtml(s.name)}</b> — ${escapeHtml(s.summary)}</li>`).join("");
-    box.innerHTML = `
-      <h4>${escapeHtml(DEMO_PLATFORM.name)}</h4>
-      <p style="margin:4px 0 10px">${escapeHtml(DEMO_PLATFORM.description)}</p>
-      <div class="kv" style="margin-bottom:10px">
-        <div>Принципы:</div>
-        <div><ul class="slim">${principles}</ul></div>
-      </div>
-      <h4 style="margin-top:6px">Сервисы на платформе</h4>
-      <ul class="slim">${services}</ul>
-    `;
-    renderCrumbs(); draw();
-    return;
+    renderPlatformEditor(box, platform);
+  }else if(entity.kind === "service"){
+    renderServiceEditor(box, entity.service);
+  }else if(entity.kind === "category"){
+    renderCategoryEditor(box, entity);
+  }else if(entity.kind === "component"){
+    renderComponentEditor(box, entity);
+  }else{
+    box.textContent = "Нет данных для выбранного элемента.";
   }
-
-  if(entity.kind === "service"){
-    const service = entity.service;
-    const categories = ["frontend","backend","qa"].map(cat=>{
-      const items = getCategoryItems(service, cat);
-      if(items.length === 0) return "";
-      const names = items.map(c=>escapeHtml(c.name)).join(", ");
-      return `<li><b>${CATEGORY_LABELS[cat]}</b> (${items.length}) — ${names}</li>`;
-    }).filter(Boolean).join("");
-    const roadmap = (service.roadmap||[]).map(item=>`<li>${escapeHtml(item)}</li>`).join("");
-    box.innerHTML = `
-      <h4>${escapeHtml(service.name)}</h4>
-      <p style="margin:4px 0 10px">${escapeHtml(service.summary)}</p>
-      <div class="kv">
-        <div>Миссия:</div><div>${escapeHtml(service.mission)}</div>
-        <div>Статус:</div><div>${escapeHtml(service.status || "—")}</div>
-        <div>SLA:</div><div>${escapeHtml(service.sla || "—")}</div>
-        <div>Импакт:</div><div>${escapeHtml(service.impact || "—")}</div>
-        <div>Владелец:</div><div>${escapeHtml(service.owner || "—")}</div>
-        <div>Лид:</div><div>${escapeHtml(service.lead || "—")}</div>
-      </div>
-      <h4 style="margin-top:12px">Команды сервиса</h4>
-      <ul class="slim">${categories || "<li>Нет артефактов</li>"}</ul>
-      <h4 style="margin-top:12px">Фокус роадмапа</h4>
-      <ul class="slim">${roadmap || "<li>—</li>"}</ul>
-    `;
-    renderCrumbs(); draw();
-    return;
-  }
-
-  if(entity.kind === "category"){
-    const { service, category, items } = entity;
-    const note = (service.categoryNotes && service.categoryNotes[category]) ? escapeHtml(service.categoryNotes[category]) : "";
-    const rows = items.map(comp=>{
-      const metaParts = [];
-      if(comp.stack) metaParts.push(`<span>Стек: ${escapeHtml(comp.stack)}</span>`);
-      if(comp.status) metaParts.push(`<span>Статус: ${escapeHtml(comp.status)}</span>`);
-      if(comp.lead) metaParts.push(`<span>Лид: ${escapeHtml(comp.lead)}</span>`);
-      if(comp.repo) metaParts.push(`<span>Репозиторий: <code>${escapeHtml(comp.repo)}</code></span>`);
-      if(comp.cadence) metaParts.push(`<span>Частота: ${escapeHtml(comp.cadence)}</span>`);
-      if(comp.coverage) metaParts.push(`<span>Покрытие: ${escapeHtml(comp.coverage)}</span>`);
-      if(comp.metrics){
-        Object.entries(comp.metrics).forEach(([k,v])=>{
-          metaParts.push(`<span>${escapeHtml(k)}: ${escapeHtml(v)}</span>`);
-        });
-      }
-      const meta = metaParts.length ? `<div style="display:flex;flex-direction:column;gap:2px;margin-top:4px;opacity:.85">${metaParts.join("")}</div>` : "";
-      return `<li><b>${escapeHtml(comp.name)}</b><div style="opacity:.8">${escapeHtml(comp.description || "Без описания")}</div>${meta}</li>`;
-    }).join("");
-    box.innerHTML = `
-      <h4>${escapeHtml(CATEGORY_LABELS[category])} · ${escapeHtml(service.name)}</h4>
-      <p style="margin:4px 0 10px">${note}</p>
-      <ul class="slim">${rows || "<li>Нет элементов</li>"}</ul>
-    `;
-    renderCrumbs(); draw();
-    return;
-  }
-
-  if(entity.kind === "component"){
-    const { service, category, component } = entity;
-    const metrics = component.metrics ? Object.entries(component.metrics).map(([k,v])=>`<li><span>${escapeHtml(k)}:</span> <b>${escapeHtml(v)}</b></li>`).join("") : "";
-    box.innerHTML = `
-      <h4>${escapeHtml(component.name)}</h4>
-      <p style="margin:4px 0 10px">${escapeHtml(component.description || "")}</p>
-      <div class="kv">
-        <div>Сервис:</div><div>${escapeHtml(service.name)}</div>
-        <div>Направление:</div><div>${escapeHtml(CATEGORY_LABELS[category])}</div>
-        <div>Стек:</div><div>${escapeHtml(component.stack || "—")}</div>
-        <div>Статус:</div><div>${escapeHtml(component.status || "—")}</div>
-        <div>Лид:</div><div>${escapeHtml(component.lead || "—")}</div>
-        <div>Репозиторий:</div><div>${component.repo ? `<code>${escapeHtml(component.repo)}</code>` : "—"}</div>
-        <div>Частота:</div><div>${escapeHtml(component.cadence || "—")}</div>
-        <div>Покрытие:</div><div>${escapeHtml(component.coverage || "—")}</div>
-      </div>
-      ${metrics ? `<h4 style="margin-top:12px">Метрики</h4><ul class="slim">${metrics}</ul>` : ""}
-    `;
-    renderCrumbs(); draw();
-    return;
-  }
+  renderCrumbs(); draw();
 }
 
 /* =================== boot =================== */
@@ -1100,6 +1660,8 @@ async function rebuildTree(){
 window.addEventListener("resize", ()=>{ resize(); draw(); });
 
 (async function init(){
+  PLATFORM_DATA = await loadPlatformData();
+  markClean();
   resize();
   FULL_GRAPH = await loadGraph();
   await rebuildTree();
