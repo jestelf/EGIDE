@@ -1,0 +1,39 @@
+{
+  "id": "platform",
+  "name": "EGIDE Platform",
+  "description": "Unified digital platform providing reusable capabilities, shared contracts and automation pipelines for product teams.",
+  "principles": [
+    "Platform-first: every capability is exposed as an internal service with clear ownership",
+    "Canonical data contracts shared across products and validated automatically",
+    "API-first delivery with backward-compatible change management",
+    "Observability baked into each domain via common telemetry standards",
+    "Autonomous cross-functional teams aligned by business domains"
+  ],
+  "owners": [
+    {
+      "role": "Chief Platform Officer",
+      "name": "Vladislav Pakhomov",
+      "contacts": {
+        "email": "v.pakhomov@egide.io"
+      }
+    }
+  ],
+  "links": {
+    "self": "./platform.json",
+    "services": "./services.json"
+  },
+  "serviceDomains": [
+    "frontend",
+    "backend",
+    "qa"
+  ],
+  "serviceOrder": [
+    "customer-onboarding",
+    "payments-core",
+    "insight-analytics"
+  ],
+  "metadata": {
+    "version": "2024.04",
+    "generatedAt": "2024-04-02T08:30:00Z"
+  }
+}

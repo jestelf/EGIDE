@@ -1,0 +1,170 @@
+{
+  "service": {
+    "id": "payments-core",
+    "slug": "payments-core",
+    "name": "Payments Core",
+    "summary": "Payment intake, routing and settlement across omni-channel gateways.",
+    "mission": "Guarantee secure, real-time transaction processing for merchants worldwide.",
+    "owner": "Payments Tribe",
+    "lead": "Maxim Lavrov",
+    "status": "production",
+    "impact": "Critical",
+    "sla": "99.99%",
+    "area": "Payments",
+    "repository": "ssh://git/egide/services/payments-core",
+    "tags": ["payments", "core", "settlement"],
+    "links": {
+      "swagger": "https://internal.egide.io/swagger/payments-core",
+      "runbook": "https://runbooks.egide.io/payments-core"
+    }
+  },
+  "roadmap": [
+    "Unified clearing calendar",
+    "Intelligent retry engine for failed payments",
+    "Realtime anomaly detection dashboards"
+  ],
+  "domains": [
+    {
+      "id": "frontend",
+      "note": "Merchant dashboards reuse platform design system and offer white-label configuration.",
+      "components": [
+        {
+          "id": "merchant-dashboard",
+          "name": "Merchant Dashboard",
+          "description": "Vue 3 portal exposing payment streams, settlement status and dispute workflows.",
+          "stack": "Vue 3, Pinia, Highcharts",
+          "status": "prod",
+          "lead": "Sergey Fomin",
+          "repository": "ssh://git/egide/services/payments-core/frontend/merchant-dashboard",
+          "metrics": {
+            "nps": "54",
+            "dailySessions": "12K sessions"
+          }
+        }
+      ]
+    },
+    {
+      "id": "backend",
+      "note": "Payment domains split into isolated bounded contexts with dedicated pipelines.",
+      "components": [
+        {
+          "id": "payment-router",
+          "name": "Payment Router",
+          "description": "Go service balancing operations across gateways with retry policies.",
+          "stack": "Go, gRPC, Kafka",
+          "status": "prod",
+          "lead": "Vlad Kolesnik",
+          "repository": "ssh://git/egide/services/payments-core/backend/payment-router",
+          "metrics": {
+            "latency": "180ms P95",
+            "volume": "2.1M tx/day"
+          }
+        },
+        {
+          "id": "settlement-service",
+          "name": "Settlement Service",
+          "description": "Settlement runs, reconciliation acts and ledger synchronisation.",
+          "stack": "Java, Quarkus, PostgreSQL",
+          "status": "prod",
+          "lead": "Ekaterina Belova",
+          "repository": "ssh://git/egide/services/payments-core/backend/settlement-service",
+          "metrics": {
+            "reports": "6K daily reports"
+          }
+        }
+      ]
+    },
+    {
+      "id": "qa",
+      "note": "Multiple staging environments and contract providers guard against regressions.",
+      "components": [
+        {
+          "id": "payment-e2e",
+          "name": "Payments E2E",
+          "description": "End-to-end scenarios covering checkout, capture and refunds.",
+          "stack": "Cypress, TypeScript",
+          "status": "prod",
+          "lead": "Yulia Gorina",
+          "cadence": "Hourly",
+          "coverage": "78% payment flows"
+        },
+        {
+          "id": "load-benchmarks",
+          "name": "Load Benchmarks",
+          "description": "Performance profiling for card-present and card-not-present operations.",
+          "stack": "k6, Grafana, Loki",
+          "status": "weekly",
+          "lead": "Artem Dubov",
+          "cadence": "Weekly",
+          "coverage": "Peak hours"
+        }
+      ]
+    }
+  ],
+  "servicesTree": [
+    {
+      "name": "services/payments-core",
+      "type": "service",
+      "description": "Mission-critical payment processing stack.",
+      "children": [
+        {
+          "name": "frontend",
+          "type": "folder",
+          "children": [
+            {
+              "name": "components",
+              "type": "folder",
+              "children": [
+                {
+                  "name": "SettlementWidget.vue",
+                  "type": "component",
+                  "items": [
+                    { "name": "props", "detail": "merchantId, timeframe" },
+                    { "name": "services", "detail": "useSettlements, useAlerts" }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "backend",
+          "type": "folder",
+          "children": [
+            {
+              "name": "payment-router",
+              "type": "module",
+              "items": [
+                { "name": "packages", "detail": "router, failover, audit" },
+                { "name": "handlers", "detail": "AuthorizeHandler, CaptureHandler" },
+                { "name": "scripts", "detail": "migration/001_create_operations.sql" }
+              ]
+            },
+            {
+              "name": "settlement-service",
+              "type": "module",
+              "items": [
+                { "name": "jobs", "detail": "closePeriodJob, disputeAggregator" },
+                { "name": "classes", "detail": "LedgerSyncService, TreasuryGateway" }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "qa",
+          "type": "folder",
+          "children": [
+            {
+              "name": "scenarios",
+              "type": "module",
+              "items": [
+                { "name": "flows", "detail": "happy_path.cy.ts, refund.cy.ts" },
+                { "name": "data", "detail": "fixtures/cards.json, fixtures/terminals.json" }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

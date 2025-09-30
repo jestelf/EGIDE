@@ -1,0 +1,205 @@
+{
+  "service": {
+    "id": "customer-onboarding",
+    "slug": "customer-onboarding",
+    "name": "Customer Onboarding",
+    "summary": "End-to-end onboarding experience from application to activation with automated risk assessment.",
+    "mission": "Make the first customer journey self-served, transparent and regulation compliant.",
+    "owner": "Stream Onboarding",
+    "lead": "Irina Volkova",
+    "status": "production",
+    "impact": "High",
+    "sla": "99.95%",
+    "area": "Acquisition",
+    "repository": "ssh://git/egide/services/customer-onboarding",
+    "tags": ["onboarding", "kyc", "customer-journey"],
+    "links": {
+      "swagger": "https://internal.egide.io/swagger/customer-onboarding",
+      "runbook": "https://runbooks.egide.io/customer-onboarding"
+    }
+  },
+  "roadmap": [
+    "Automated risk repricing per segment",
+    "Unified tariff storefront with personalization",
+    "Status synchronisation with partner banks"
+  ],
+  "domains": [
+    {
+      "id": "frontend",
+      "note": "UI team owns self-service flows and accessibility for mobile and desktop.",
+      "components": [
+        {
+          "id": "customer-portal",
+          "name": "Customer Portal",
+          "description": "React entry point displaying onboarding progress, tasks and SLA timers.",
+          "stack": "React 18, Vite, RTK Query",
+          "status": "prod",
+          "lead": "Dmitry Mizin",
+          "repository": "ssh://git/egide/services/customer-onboarding/frontend/customer-portal",
+          "metrics": {
+            "activeUsers": "42K MAU",
+            "coreWebVitals": "LCP 1.4s"
+          }
+        },
+        {
+          "id": "kyc-form",
+          "name": "KYC Form",
+          "description": "Adaptive multi-step wizard with conditional validation and document capture.",
+          "stack": "React Hook Form, Zustand, WebRTC",
+          "status": "prod",
+          "lead": "Anna Savina",
+          "repository": "ssh://git/egide/services/customer-onboarding/frontend/kyc-form",
+          "metrics": {
+            "conversion": "+18% after A/B",
+            "latency": "65ms avg validation"
+          }
+        }
+      ]
+    },
+    {
+      "id": "backend",
+      "note": "Event-driven microservices keep every KYC process transactional and traceable.",
+      "components": [
+        {
+          "id": "workflow-engine",
+          "name": "Workflow Engine",
+          "description": "Kotlin orchestration of onboarding states, compensating actions and SLA timers.",
+          "stack": "Kotlin, Spring Boot, Kafka",
+          "status": "prod",
+          "lead": "Pavel Romanov",
+          "repository": "ssh://git/egide/services/customer-onboarding/backend/workflow-engine",
+          "metrics": {
+            "throughput": "12K processes/hour",
+            "latency": "350ms P95"
+          }
+        },
+        {
+          "id": "risk-evaluator",
+          "name": "Risk Evaluator",
+          "description": "Real-time scoring against sanction lists and behavioural analytics.",
+          "stack": "Python, FastAPI, Redis",
+          "status": "beta",
+          "lead": "Eugene Grishin",
+          "repository": "ssh://git/egide/services/customer-onboarding/backend/risk-evaluator",
+          "metrics": {
+            "coverage": "98% match coverage"
+          }
+        }
+      ]
+    },
+    {
+      "id": "qa",
+      "note": "QA guild covers regression suites, accessibility and contract smoke tests.",
+      "components": [
+        {
+          "id": "onboarding-regression",
+          "name": "Onboarding Regression",
+          "description": "Full regression scenario from application submission to product activation.",
+          "stack": "Playwright, Allure",
+          "status": "nightly",
+          "lead": "Tatyana Zhuravleva",
+          "cadence": "Every 4 hours",
+          "coverage": "85% critical flows"
+        },
+        {
+          "id": "api-contract-tests",
+          "name": "API Contract Tests",
+          "description": "Validation of platform contracts across REST and event schemas.",
+          "stack": "Postman CLI, Newman",
+          "status": "ci",
+          "lead": "Mikhail Osipov",
+          "cadence": "On each merge",
+          "coverage": "100% public contracts"
+        }
+      ]
+    }
+  ],
+  "servicesTree": [
+    {
+      "name": "services/customer-onboarding",
+      "type": "service",
+      "description": "Service repository combining frontend, backend and QA assets.",
+      "children": [
+        {
+          "name": "frontend",
+          "type": "folder",
+          "children": [
+            {
+              "name": "pages",
+              "type": "folder",
+              "children": [
+                {
+                  "name": "ApplicationFlow.tsx",
+                  "type": "component",
+                  "items": [
+                    { "name": "component", "detail": "Renders onboarding steps and progress" },
+                    { "name": "hooks", "detail": "useApplicationSteps, useKYCStatus" }
+                  ]
+                },
+                {
+                  "name": "DocumentsUpload.tsx",
+                  "type": "component",
+                  "items": [
+                    { "name": "component", "detail": "Upload pipeline with OCR preview" },
+                    { "name": "services", "detail": "docClient.requestScan, docClient.saveDraft" }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "api",
+              "type": "folder",
+              "children": [
+                {
+                  "name": "kycClient.ts",
+                  "type": "module",
+                  "items": [
+                    { "name": "functions", "detail": "fetchApplicant, submitStep, pollStatus" },
+                    { "name": "schemas", "detail": "ApplicantDTO, StepPayload" }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "backend",
+          "type": "folder",
+          "children": [
+            {
+              "name": "workflow-engine",
+              "type": "module",
+              "items": [
+                { "name": "classes", "detail": "ApplicationSaga, SLAWatcher" },
+                { "name": "topics", "detail": "onboarding.status.changed, onboarding.sla.breached" },
+                { "name": "tasks", "detail": "Retry compensation, edge cases" }
+              ]
+            },
+            {
+              "name": "risk-evaluator",
+              "type": "module",
+              "items": [
+                { "name": "pipelines", "detail": "pep_screening, anomaly_detection" },
+                { "name": "scripts", "detail": "update_watchlists.py" }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "qa",
+          "type": "folder",
+          "children": [
+            {
+              "name": "specs",
+              "type": "module",
+              "items": [
+                { "name": "journeys", "detail": "signup_smoke.json, recovery_flow.json" },
+                { "name": "reports", "detail": "allure-history, test-coverage.md" }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,59 +1,63 @@
 {
   "id": "platform",
-  "name": "Платформа EGIDE",
-  "description": "Базовая платформа, объединяющая цифровые сервисы. Платформа — фундамент, остальные уровни наследуют от нее общий язык, стандарты и инфраструктуру.",
+  "name": "EGIDE Platform",
+  "description": "Unified digital platform providing reusable capabilities, shared contracts and automation pipelines for product teams.",
   "principles": [
-    "Единая платформа как точка сборки всех сервисов",
-    "Принцип модели данных: все сервисы наследуют каноническую модель платформы",
-    "Принцип REST-запросов: каждый сервис соблюдает платформенные контракты и идемпотентность",
-    "Сервисы строятся поверх платформенных контрактов",
-    "Frontend, Backend и QA для сервиса работают как единая автономная команда"
+    "Platform-first: every capability is exposed as an internal service with clear ownership",
+    "Canonical data contracts shared across products and validated automatically",
+    "API-first delivery with backward-compatible change management",
+    "Observability baked into each domain via common telemetry standards",
+    "Autonomous cross-functional teams aligned by business domains"
   ],
   "services": [
     {
       "id": "customer-onboarding",
-      "name": "Онбординг клиентов",
-      "summary": "Полный цикл привлечения и верификации клиента от заявки до активации продукта.",
-      "mission": "Сделать старт работы с продуктом прозрачным и полностью самообслуживаемым.",
+      "slug": "customer-onboarding",
+      "name": "Customer Onboarding",
+      "summary": "End-to-end onboarding experience from application to activation with automated risk assessment.",
+      "mission": "Make the first customer journey self-served, transparent and regulation compliant.",
       "owner": "Stream Onboarding",
-      "lead": "Ирина Волкова",
+      "lead": "Irina Volkova",
       "status": "production",
-      "impact": "Высокий",
+      "impact": "High",
       "sla": "99.95%",
+      "area": "Acquisition",
+      "repo": "ssh://git/egide/services/customer-onboarding",
       "roadmap": [
-        "Автоматическая переоценка рисков",
-        "Единая витрина тарифов",
-        "Синхронизация статусов с партнёрами"
+        "Automated risk repricing per segment",
+        "Unified tariff storefront with personalization",
+        "Status synchronisation with partner banks"
       ],
       "categoryNotes": {
-        "frontend": "Команда UI обеспечивает быстрый отклик и доступность интерфейсов для разных устройств.",
-        "backend": "Микросервисы построены на событиях, обеспечивают непрерывность процессов KYC.",
-        "qa": "QA-группа держит контроль критических пользовательских сценариев и регресса."
+        "frontend": "UI team owns self-service flows and accessibility for mobile and desktop.",
+        "backend": "Event-driven microservices keep every KYC process transactional and traceable.",
+        "qa": "QA guild covers regression suites, accessibility and contract smoke tests."
       },
       "frontend": [
         {
           "id": "customer-portal",
-          "name": "Клиентский портал",
-          "description": "Главная точка входа для новых клиентов с трекингом статуса заявки.",
-          "stack": "React, Vite, RTK Query",
+          "name": "Customer Portal",
+          "description": "React entry point displaying onboarding progress, tasks and SLA timers.",
+          "stack": "React 18, Vite, RTK Query",
           "status": "prod",
-          "lead": "Дмитрий Мизин",
-          "repo": "ssh://git/internal/customer-portal",
+          "lead": "Dmitry Mizin",
+          "repo": "ssh://git/egide/services/customer-onboarding/frontend/customer-portal",
           "metrics": {
-            "users": "42K MAU",
-            "uptime": "99.9%"
+            "activeUsers": "42K MAU",
+            "coreWebVitals": "LCP 1.4s"
           }
         },
         {
           "id": "kyc-form",
-          "name": "KYC форма",
-          "description": "Анкета с динамическими шагами, адаптирующимися под сегмент клиента.",
-          "stack": "React Hook Form, Zustand",
+          "name": "KYC Form",
+          "description": "Adaptive multi-step wizard with conditional validation and document capture.",
+          "stack": "React Hook Form, Zustand, WebRTC",
           "status": "prod",
-          "lead": "Анна Савина",
-          "repo": "ssh://git/internal/kyc-form",
+          "lead": "Anna Savina",
+          "repo": "ssh://git/egide/services/customer-onboarding/frontend/kyc-form",
           "metrics": {
-            "conversion": "+18% после A/B"
+            "conversion": "+18% after A/B",
+            "latency": "65ms avg validation"
           }
         }
       ],
@@ -61,84 +65,175 @@
         {
           "id": "workflow-engine",
           "name": "Workflow Engine",
-          "description": "Оркестрация этапов онбординга, вебхуки и SLA мониторинг.",
+          "description": "Kotlin orchestration of onboarding states, compensating actions and SLA timers.",
           "stack": "Kotlin, Spring Boot, Kafka",
           "status": "prod",
-          "lead": "Павел Романов",
-          "repo": "ssh://git/internal/workflow-engine",
+          "lead": "Pavel Romanov",
+          "repo": "ssh://git/egide/services/customer-onboarding/backend/workflow-engine",
           "metrics": {
-            "throughput": "12K процессов/ч",
-            "latency": "350 мс P95"
+            "throughput": "12K processes/hour",
+            "latency": "350ms P95"
           }
         },
         {
           "id": "risk-evaluator",
           "name": "Risk Evaluator",
-          "description": "Скоринг рисков и проверка санкционных списков.",
+          "description": "Real-time scoring against sanction lists and behavioural analytics.",
           "stack": "Python, FastAPI, Redis",
           "status": "beta",
-          "lead": "Женя Гришин",
-          "repo": "ssh://git/internal/risk-evaluator",
+          "lead": "Eugene Grishin",
+          "repo": "ssh://git/egide/services/customer-onboarding/backend/risk-evaluator",
           "metrics": {
-            "coverage": "98% матчей"
+            "coverage": "98% match coverage"
           }
         }
       ],
       "qa": [
         {
           "id": "onboarding-regression",
-          "name": "Регрессия онбординга",
-          "description": "Полный регрессионный сценарий от заявки до активации.",
+          "name": "Onboarding Regression",
+          "description": "Full regression scenario from application submission to product activation.",
           "stack": "Playwright, Allure",
           "status": "nightly",
-          "lead": "Татьяна Журавлёва",
-          "cadence": "Каждые 4 часа",
-          "coverage": "85% критических путей"
+          "lead": "Tatyana Zhuravleva",
+          "cadence": "Every 4 hours",
+          "coverage": "85% critical flows"
         },
         {
           "id": "api-contract-tests",
-          "name": "Контрактные тесты API",
-          "description": "Проверка соответствия API платформенным схемам.",
+          "name": "API Contract Tests",
+          "description": "Validation of platform contracts across REST and event schemas.",
           "stack": "Postman CLI, Newman",
           "status": "ci",
-          "lead": "Михаил Осипов",
-          "cadence": "При каждом мерже",
-          "coverage": "100% публичных контрактов"
+          "lead": "Mikhail Osipov",
+          "cadence": "On each merge",
+          "coverage": "100% public contracts"
+        }
+      ],
+      "servicesTree": [
+        {
+          "name": "services/customer-onboarding",
+          "type": "service",
+          "description": "Service repository combining frontend, backend and QA assets.",
+          "children": [
+            {
+              "name": "frontend",
+              "type": "folder",
+              "children": [
+                {
+                  "name": "pages",
+                  "type": "folder",
+                  "children": [
+                    {
+                      "name": "ApplicationFlow.tsx",
+                      "type": "component",
+                      "items": [
+                        { "name": "component", "detail": "Renders onboarding steps and progress" },
+                        { "name": "hooks", "detail": "useApplicationSteps, useKYCStatus" }
+                      ]
+                    },
+                    {
+                      "name": "DocumentsUpload.tsx",
+                      "type": "component",
+                      "items": [
+                        { "name": "component", "detail": "Upload pipeline with OCR preview" },
+                        { "name": "services", "detail": "docClient.requestScan, docClient.saveDraft" }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "api",
+                  "type": "folder",
+                  "children": [
+                    {
+                      "name": "kycClient.ts",
+                      "type": "module",
+                      "items": [
+                        { "name": "functions", "detail": "fetchApplicant, submitStep, pollStatus" },
+                        { "name": "schemas", "detail": "ApplicantDTO, StepPayload" }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "backend",
+              "type": "folder",
+              "children": [
+                {
+                  "name": "workflow-engine",
+                  "type": "module",
+                  "items": [
+                    { "name": "classes", "detail": "ApplicationSaga, SLAWatcher" },
+                    { "name": "topics", "detail": "onboarding.status.changed, onboarding.sla.breached" },
+                    { "name": "tasks", "detail": "Retry compensation, edge cases" }
+                  ]
+                },
+                {
+                  "name": "risk-evaluator",
+                  "type": "module",
+                  "items": [
+                    { "name": "pipelines", "detail": "pep_screening, anomaly_detection" },
+                    { "name": "scripts", "detail": "update_watchlists.py" }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "qa",
+              "type": "folder",
+              "children": [
+                {
+                  "name": "specs",
+                  "type": "module",
+                  "items": [
+                    { "name": "journeys", "detail": "signup_smoke.json, recovery_flow.json" },
+                    { "name": "reports", "detail": "allure-history, test-coverage.md" }
+                  ]
+                }
+              ]
+            }
+          ]
         }
       ]
     },
     {
       "id": "payments-core",
-      "name": "Платёжное ядро",
-      "summary": "Приём и маршрутизация платежей во всех каналах.",
-      "mission": "Гарантировать мгновенную и безопасную обработку транзакций.",
+      "slug": "payments-core",
+      "name": "Payments Core",
+      "summary": "Payment intake, routing and settlement across omni-channel gateways.",
+      "mission": "Guarantee secure, real-time transaction processing for merchants worldwide.",
       "owner": "Payments Tribe",
-      "lead": "Максим Лавров",
+      "lead": "Maxim Lavrov",
       "status": "production",
-      "impact": "Критический",
+      "impact": "Critical",
       "sla": "99.99%",
+      "area": "Payments",
+      "repo": "ssh://git/egide/services/payments-core",
       "roadmap": [
-        "Единый расчётный календарь",
-        "Интеллектуальный ретраинг операций",
-        "Realtime мониторинг отклонений"
+        "Unified clearing calendar",
+        "Intelligent retry engine for failed payments",
+        "Realtime anomaly detection dashboards"
       ],
       "categoryNotes": {
-        "frontend": "Интерфейсы построены поверх платформенных компонентов и поддерживают white-label.",
-        "backend": "Домены платежей разделены на изолированные bounded context'ы.",
-        "qa": "Используется сет стейджингов и контрактные провайдеры для предотвращения регрессов."
+        "frontend": "Merchant dashboards reuse platform design system and offer white-label configuration.",
+        "backend": "Payment domains split into isolated bounded contexts with dedicated pipelines.",
+        "qa": "Multiple staging environments and contract providers guard against regressions."
       },
       "frontend": [
         {
           "id": "merchant-dashboard",
-          "name": "Кабинет мерчанта",
-          "description": "Отображение платежных потоков и управление витринами.",
-          "stack": "Vue 3, Pinia",
+          "name": "Merchant Dashboard",
+          "description": "Vue 3 portal exposing payment streams, settlement status and dispute workflows.",
+          "stack": "Vue 3, Pinia, Highcharts",
           "status": "prod",
-          "lead": "Сергей Фомин",
-          "repo": "ssh://git/internal/merchant-dashboard",
+          "lead": "Sergey Fomin",
+          "repo": "ssh://git/egide/services/payments-core/frontend/merchant-dashboard",
           "metrics": {
             "nps": "54",
-            "sessions": "12K в сутки"
+            "dailySessions": "12K sessions"
           }
         }
       ],
@@ -146,121 +241,180 @@
         {
           "id": "payment-router",
           "name": "Payment Router",
-          "description": "Маршрутизация операций по шлюзам и провайдерам.",
+          "description": "Go service balancing operations across gateways with retry policies.",
           "stack": "Go, gRPC, Kafka",
           "status": "prod",
-          "lead": "Влад Колесник",
-          "repo": "ssh://git/internal/payment-router",
+          "lead": "Vlad Kolesnik",
+          "repo": "ssh://git/egide/services/payments-core/backend/payment-router",
           "metrics": {
-            "latency": "180 мс P95",
-            "volume": "2.1M txn/день"
+            "latency": "180ms P95",
+            "volume": "2.1M tx/day"
           }
         },
         {
           "id": "settlement-service",
           "name": "Settlement Service",
-          "description": "Расчёты и акты сверок с мерчантами.",
+          "description": "Settlement runs, reconciliation acts and ledger synchronisation.",
           "stack": "Java, Quarkus, PostgreSQL",
           "status": "prod",
-          "lead": "Екатерина Белова",
-          "repo": "ssh://git/internal/settlement-service",
+          "lead": "Ekaterina Belova",
+          "repo": "ssh://git/egide/services/payments-core/backend/settlement-service",
           "metrics": {
-            "reports": "6K отчётов/день"
+            "reports": "6K daily reports"
           }
         }
       ],
       "qa": [
         {
           "id": "payment-e2e",
-          "name": "E2E платежи",
-          "description": "Сквозные сценарии приёма и возврата платежей.",
+          "name": "Payments E2E",
+          "description": "End-to-end scenarios covering checkout, capture and refunds.",
           "stack": "Cypress, TypeScript",
           "status": "prod",
-          "lead": "Юлия Горина",
-          "cadence": "Каждый час",
-          "coverage": "78% денежных потоков"
+          "lead": "Yulia Gorina",
+          "cadence": "Hourly",
+          "coverage": "78% payment flows"
         },
         {
           "id": "load-benchmarks",
-          "name": "Нагрузочные бенчмарки",
-          "description": "Профилирование производительности критических операций.",
-          "stack": "Gatling, Grafana",
+          "name": "Load Benchmarks",
+          "description": "Performance profiling for card-present and card-not-present operations.",
+          "stack": "k6, Grafana, Loki",
           "status": "weekly",
-          "lead": "Алексей Логинов",
-          "cadence": "Раз в неделю",
-          "coverage": "Пиковые сценарии чек-аута"
+          "lead": "Artem Dubov",
+          "cadence": "Weekly",
+          "coverage": "Peak hours"
+        }
+      ],
+      "servicesTree": [
+        {
+          "name": "services/payments-core",
+          "type": "service",
+          "description": "Mission-critical payment processing stack.",
+          "children": [
+            {
+              "name": "frontend",
+              "type": "folder",
+              "children": [
+                {
+                  "name": "components",
+                  "type": "folder",
+                  "children": [
+                    {
+                      "name": "SettlementWidget.vue",
+                      "type": "component",
+                      "items": [
+                        { "name": "props", "detail": "merchantId, timeframe" },
+                        { "name": "services", "detail": "useSettlements, useAlerts" }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "backend",
+              "type": "folder",
+              "children": [
+                {
+                  "name": "payment-router",
+                  "type": "module",
+                  "items": [
+                    { "name": "packages", "detail": "router, failover, audit" },
+                    { "name": "handlers", "detail": "AuthorizeHandler, CaptureHandler" },
+                    { "name": "scripts", "detail": "migration/001_create_operations.sql" }
+                  ]
+                },
+                {
+                  "name": "settlement-service",
+                  "type": "module",
+                  "items": [
+                    { "name": "jobs", "detail": "closePeriodJob, disputeAggregator" },
+                    { "name": "classes", "detail": "LedgerSyncService, TreasuryGateway" }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "qa",
+              "type": "folder",
+              "children": [
+                {
+                  "name": "scenarios",
+                  "type": "module",
+                  "items": [
+                    { "name": "flows", "detail": "happy_path.cy.ts, refund.cy.ts" },
+                    { "name": "data", "detail": "fixtures/cards.json, fixtures/terminals.json" }
+                  ]
+                }
+              ]
+            }
+          ]
         }
       ]
     },
     {
-      "id": "insights-hub",
-      "name": "Insights Hub",
-      "summary": "Единое хранилище аналитики и витрин для продуктовых команд.",
-      "mission": "Доставлять аналитические инсайты в течение минут, а не дней.",
-      "owner": "Data Platform",
-      "lead": "Олег Сафронов",
+      "id": "insight-analytics",
+      "slug": "insight-analytics",
+      "name": "Insight Analytics",
+      "summary": "Self-service analytics workspace for stakeholders with governed datasets.",
+      "mission": "Deliver trustworthy data products and shorten decision lead time to minutes.",
+      "owner": "Analytics Guild",
+      "lead": "Olga Petrova",
       "status": "beta",
-      "impact": "Стратегический",
-      "sla": "99.5%",
+      "impact": "Medium",
+      "sla": "99.9%",
+      "area": "Analytics",
+      "repo": "ssh://git/egide/services/insight-analytics",
       "roadmap": [
-        "Self-service построение витрин",
-        "ML-пайплайны с автоматическим деплоем",
-        "Каталогирование показателей"
+        "Realtime KPI stream for executives",
+        "Data contract diff visualiser",
+        "Self-healing pipelines for late arriving data"
       ],
       "categoryNotes": {
-        "frontend": "Витрины и конструкторы отчётов работают поверх design-system платформы.",
-        "backend": "Дата-канал построен на потоковой обработке и lakehouse-подходе.",
-        "qa": "QA команда поддерживает доверие к данным через автоматические проверки качества."
+        "frontend": "React workspace assembled from platform micro frontends with feature toggles.",
+        "backend": "Data mesh nodes orchestrated with dbt and streaming enrichment.",
+        "qa": "Quality layer keeps datasets trustworthy via automated assertions."
       },
       "frontend": [
         {
           "id": "analytics-workbench",
           "name": "Analytics Workbench",
-          "description": "Конструктор отчётов и визуализаций для продуктовых менеджеров.",
-          "stack": "React, Recharts",
+          "description": "Modular canvas with charts, dataset browser and KPI annotations.",
+          "stack": "React, Recharts, Apollo",
           "status": "beta",
-          "lead": "Алина Рябова",
-          "repo": "ssh://git/internal/analytics-workbench",
+          "lead": "Roman Ivlev",
+          "repo": "ssh://git/egide/services/insight-analytics/frontend/analytics-workbench",
           "metrics": {
-            "adoption": "15 команд"
-          }
-        },
-        {
-          "id": "metrics-catalog",
-          "name": "Каталог метрик",
-          "description": "Единое место для описаний KPI и метрик.",
-          "stack": "Next.js, Chakra UI",
-          "status": "beta",
-          "lead": "Никита Круглов",
-          "repo": "ssh://git/internal/metrics-catalog",
-          "metrics": {
-            "entries": "320 описаний"
+            "dashboards": "320 live dashboards",
+            "retention": "82% weekly"
           }
         }
       ],
       "backend": [
         {
-          "id": "event-hub",
-          "name": "Event Hub",
-          "description": "Сбор и маршрутизация событий продукта.",
-          "stack": "Scala, Akka Streams, ClickHouse",
-          "status": "prod",
-          "lead": "Игорь Щербаков",
-          "repo": "ssh://git/internal/event-hub",
+          "id": "dataset-registry",
+          "name": "Dataset Registry",
+          "description": "Catalog service tracking ownership, schemas and freshness of datasets.",
+          "stack": "Node.js, NestJS, PostgreSQL",
+          "status": "beta",
+          "lead": "Kirill Dubrov",
+          "repo": "ssh://git/egide/services/insight-analytics/backend/dataset-registry",
           "metrics": {
-            "ingestion": "8 млрд событий/сутки"
+            "datasets": "112 curated datasets"
           }
         },
         {
-          "id": "ml-pipeline",
-          "name": "ML Pipeline",
-          "description": "Платформа обучения и выката моделей.",
-          "stack": "Python, Airflow, MLflow",
+          "id": "stream-enricher",
+          "name": "Stream Enricher",
+          "description": "Flink job enriching customer events with product taxonomy and risk scores.",
+          "stack": "Apache Flink, Scala, Kafka",
           "status": "beta",
-          "lead": "Лидия Бахметьева",
-          "repo": "ssh://git/internal/ml-pipeline",
+          "lead": "Maria Klepova",
+          "repo": "ssh://git/egide/services/insight-analytics/backend/stream-enricher",
           "metrics": {
-            "models": "24 активных"
+            "lag": "< 3 seconds",
+            "events": "480K events/min"
           }
         }
       ],
@@ -268,22 +422,87 @@
         {
           "id": "data-quality",
           "name": "Data Quality",
-          "description": "Автоматические проверки качества данных и алерты.",
-          "stack": "Great Expectations, DBT",
+          "description": "Automated data quality checks with alerts and anomaly scoring.",
+          "stack": "Great Expectations, dbt, Airflow",
           "status": "ci",
-          "lead": "Глеб Назаров",
-          "cadence": "При каждой поставке",
-          "coverage": "112 витрин"
+          "lead": "Gleb Nazarov",
+          "cadence": "Every delivery",
+          "coverage": "112 tables"
         },
         {
           "id": "schema-guardian",
           "name": "Schema Guardian",
-          "description": "Контроль схем событий и обратная совместимость.",
+          "description": "Change management for event schemas and backward compatibility reports.",
           "stack": "OpenAPI Diff, Kafka TestKit",
           "status": "prod",
-          "lead": "Елена Афанасьева",
-          "cadence": "На каждый релиз",
-          "coverage": "58 контрактов"
+          "lead": "Elena Afanasyeva",
+          "cadence": "Each release",
+          "coverage": "58 contracts"
+        }
+      ],
+      "servicesTree": [
+        {
+          "name": "services/insight-analytics",
+          "type": "service",
+          "description": "Analytics workspace with governed datasets and automation.",
+          "children": [
+            {
+              "name": "frontend",
+              "type": "folder",
+              "children": [
+                {
+                  "name": "modules",
+                  "type": "folder",
+                  "children": [
+                    {
+                      "name": "DashboardBuilder.tsx",
+                      "type": "component",
+                      "items": [
+                        { "name": "hooks", "detail": "useWidgetLibrary, useGridLayout" },
+                        { "name": "tasks", "detail": "autosaveLayout, publishDraft" }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "backend",
+              "type": "folder",
+              "children": [
+                {
+                  "name": "dbt",
+                  "type": "module",
+                  "items": [
+                    { "name": "models", "detail": "fact_customer_orders.sql, dim_product.sql" },
+                    { "name": "macros", "detail": "freshness_check, ensure_not_null" }
+                  ]
+                },
+                {
+                  "name": "stream-enricher",
+                  "type": "module",
+                  "items": [
+                    { "name": "operators", "detail": "JoinWithTaxonomy, RiskScoreProjector" },
+                    { "name": "metrics", "detail": "lagMetric, throughputMetric" }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "qa",
+              "type": "folder",
+              "children": [
+                {
+                  "name": "contracts",
+                  "type": "module",
+                  "items": [
+                    { "name": "tests", "detail": "dataset_schema_diff.yml, alerting_rules.yml" },
+                    { "name": "scripts", "detail": "notify_slack.py" }
+                  ]
+                }
+              ]
+            }
+          ]
         }
       ]
     }
